@@ -1,16 +1,16 @@
 // Tests for AI Manager Service
 
-const { AIManager } = require('../src/ai-provider/ai-manager');
+const { AIManager } = require('../src/ai-manager');
 
 // Mock the provider classes
-jest.mock('../src/ai-provider/providers/openai-provider');
-jest.mock('../src/ai-provider/providers/groq-provider');
-jest.mock('../src/ai-provider/providers/openrouter-provider');
-jest.mock('../src/ai-provider/providers/anthropic-provider');
+jest.mock('../src/ai-manager/providers/openai-provider');
+jest.mock('../src/ai-manager/providers/groq-provider');
+jest.mock('../src/ai-manager/providers/openrouter-provider');
+jest.mock('../src/ai-manager/providers/anthropic-provider');
 
 // Mock the storage services
-jest.mock('../src/ai-provider/storage/settings-storage');
-jest.mock('../src/ai-provider/storage/usage-storage');
+jest.mock('../src/ai-manager/storage/settings-storage');
+jest.mock('../src/ai-manager/storage/usage-storage');
 
 describe('AIManager', () => {
   let aiManager;
@@ -90,10 +90,10 @@ describe('AIManager', () => {
     };
 
     // Mock the provider constructors
-    const { OpenAIProvider } = require('../src/ai-provider/providers/openai-provider');
-    const { GroqProvider } = require('../src/ai-provider/providers/groq-provider');
-    const { OpenRouterProvider } = require('../src/ai-provider/providers/openrouter-provider');
-    const { AnthropicProvider } = require('../src/ai-provider/providers/anthropic-provider');
+    const { OpenAIProvider } = require('../src/ai-manager/providers/openai-provider');
+    const { GroqProvider } = require('../src/ai-manager/providers/groq-provider');
+    const { OpenRouterProvider } = require('../src/ai-manager/providers/openrouter-provider');
+    const { AnthropicProvider } = require('../src/ai-manager/providers/anthropic-provider');
 
     OpenAIProvider.mockImplementation(() => mockOpenAIProvider);
     GroqProvider.mockImplementation(() => mockGroqProvider);
@@ -101,8 +101,8 @@ describe('AIManager', () => {
     AnthropicProvider.mockImplementation(() => mockAnthropicProvider);
 
     // Mock the storage constructors
-    const { SettingsStorage } = require('../src/ai-provider/storage/settings-storage');
-    const { UsageStorage } = require('../src/ai-provider/storage/usage-storage');
+    const { SettingsStorage } = require('../src/ai-manager/storage/settings-storage');
+    const { UsageStorage } = require('../src/ai-manager/storage/usage-storage');
 
     SettingsStorage.mockImplementation(() => mockSettingsStorage);
     UsageStorage.mockImplementation(() => mockUsageStorage);

@@ -1,4 +1,4 @@
-const { AIManager } = require('./ai-provider/ai-manager');
+const { AIManager } = require('./ai-manager');
 
 /**
  * Background Service Worker

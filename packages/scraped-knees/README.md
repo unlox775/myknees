@@ -117,25 +117,31 @@ make status         # Check project status and next steps
 
 ### Extension Components
 
-1. **Background Script** (`background.js`)
+1. **AI Manager** (`ai-manager.js`)
+   - Main AI service orchestrator
+   - Provider management (OpenAI, Groq, OpenRouter, Anthropic)
+   - Settings and usage tracking
+   - Request logging and debugging
+
+2. **Background Script** (`background.js`)
    - Service worker managing extension lifecycle
    - Message routing between components
    - Storage management for training sessions and scraped data
    - Tab management and communication
 
-2. **Content Script** (`content.js`)
+3. **Content Script** (`content.js`)
    - Injected into web pages
    - Training mode UI and interactions
    - Element selection and overlay management
    - Event handling and keyboard shortcuts
 
-3. **Popup Interface** (`popup.js` + `popup.html`)
+4. **Popup Interface** (`popup.js` + `popup.html`)
    - Main user interface
    - Training session management
    - Data extraction controls
    - Export functionality
 
-4. **Injected Script** (`injected.js`)
+5. **Injected Script** (`injected.js`)
    - Advanced DOM manipulation
    - Data extraction logic
    - Pagination analysis
@@ -146,15 +152,24 @@ make status         # Check project status and next steps
 ```
 packages/scraped-knees/
 ├── src/
-│   ├── background.js          # Service worker
-│   ├── content.js             # Content script
-│   ├── popup.js               # Popup logic
-│   ├── popup.html             # Popup template
-│   ├── content.css            # Content script styles
-│   ├── injected.js            # Injected script
-│   └── test/                  # Unit tests
-│       ├── setup.js           # Test environment
-│       └── content.test.js    # Content script tests
+│   ├── ai-manager.js          # Main AI service manager
+│   ├── ai-manager/            # AI service components
+│   │   ├── interfaces/        # AI provider interfaces
+│   │   ├── providers/         # AI provider implementations
+│   │   └── storage/           # AI-specific storage services
+│   ├── scraper/               # Data scraping service (future)
+│   ├── ui/                    # User interface components
+│   │   ├── options/           # Extension options page
+│   │   ├── popup/             # Extension popup
+│   │   └── content/           # Content scripts
+│   ├── background.js          # Background service worker
+│   ├── injected.js            # Content script injection
+│   └── icons/                 # Extension icons
+├── test/                      # Unit tests
+│   ├── setup.js               # Test environment
+│   ├── ai-manager.test.js     # AI manager tests
+│   ├── options.test.js        # Options page tests
+│   └── content.test.js        # Content script tests
 ├── dist/                      # Built extension files
 ├── manifest.json              # Extension manifest
 ├── package.json               # Dependencies and scripts
