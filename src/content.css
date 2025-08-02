@@ -1,0 +1,163 @@
+/* AI Data Scraper Content Script Styles */
+
+#ai-scraper-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 999999;
+}
+
+.ai-scraper-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1000000;
+  transition: all 0.2s ease;
+}
+
+.ai-scraper-selected {
+  border: 2px solid #4CAF50 !important;
+  background-color: rgba(76, 175, 80, 0.2) !important;
+  box-shadow: 0 0 10px rgba(76, 175, 80, 0.5) !important;
+}
+
+.ai-scraper-excluded {
+  border: 2px solid #f44336 !important;
+  background-color: rgba(244, 67, 54, 0.2) !important;
+  box-shadow: 0 0 10px rgba(244, 67, 54, 0.5) !important;
+}
+
+#ai-scraper-training-ui {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000001;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-width: 300px;
+}
+
+.training-panel {
+  padding: 20px;
+}
+
+.training-panel h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.training-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  font-size: 14px;
+  color: #666;
+}
+
+.training-stats span {
+  background: #f5f5f5;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.training-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.training-controls button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.training-controls button:first-child {
+  background: #4CAF50;
+  color: white;
+}
+
+.training-controls button:first-child:hover {
+  background: #45a049;
+}
+
+.training-controls button:last-child {
+  background: #f44336;
+  color: white;
+}
+
+.training-controls button:last-child:hover {
+  background: #da190b;
+}
+
+.training-help {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+}
+
+.training-help p {
+  margin: 5px 0;
+}
+
+/* Element preview styles */
+.element-preview {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  max-width: 200px;
+  z-index: 1000002;
+  pointer-events: none;
+}
+
+/* Cursor styles during training */
+body.ai-scraper-training {
+  cursor: crosshair !important;
+}
+
+body.ai-scraper-training * {
+  cursor: crosshair !important;
+}
+
+/* Animation for selected elements */
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.ai-scraper-selected {
+  animation: pulse 2s infinite;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  #ai-scraper-training-ui {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    min-width: auto;
+  }
+  
+  .training-panel {
+    padding: 15px;
+  }
+  
+  .training-controls {
+    flex-direction: column;
+  }
+}
