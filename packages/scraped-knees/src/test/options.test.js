@@ -140,7 +140,7 @@ describe('Options Page Functions', () => {
   describe('Status Messages', () => {
     test('should show status messages', () => {
       showStatus('Test message', 'success');
-      
+
       const statusElement = document.getElementById('status-message');
       expect(statusElement.textContent).toBe('Test message');
       expect(statusElement.className).toContain('success');
@@ -149,16 +149,16 @@ describe('Options Page Functions', () => {
 
     test('should auto-hide status messages', async () => {
       jest.useFakeTimers();
-      
+
       showStatus('Test message', 'info');
-      
+
       const statusElement = document.getElementById('status-message');
       expect(statusElement.className).toContain('show');
-      
+
       jest.advanceTimersByTime(5000);
-      
+
       expect(statusElement.className).not.toContain('show');
-      
+
       jest.useRealTimers();
     });
   });
@@ -196,14 +196,14 @@ async function loadSettings() {
 async function loadDataStats() {
   try {
     const data = await chrome.storage.local.get(['trainingSessions', 'scrapedData']);
-    
+
     const sessionCount = data.trainingSessions ? data.trainingSessions.length : 0;
     const itemCount = data.scrapedData ? data.scrapedData.reduce((total, session) => total + (session.items ? session.items.length : 0), 0) : 0;
-    
+
     const storageSize = JSON.stringify(data).length;
-    const storageUsed = storageSize < 1024 ? `${storageSize} B` : 
-                       storageSize < 1024 * 1024 ? `${(storageSize / 1024).toFixed(1)} KB` :
-                       `${(storageSize / (1024 * 1024)).toFixed(1)} MB`;
+    const storageUsed = storageSize < 1024 ? `${storageSize} B` :
+      storageSize < 1024 * 1024 ? `${(storageSize / 1024).toFixed(1)} KB` :
+        `${(storageSize / (1024 * 1024)).toFixed(1)} MB`;
 
     document.getElementById('session-count').textContent = sessionCount;
     document.getElementById('item-count').textContent = itemCount;
@@ -218,7 +218,7 @@ async function exportData() {
     const data = await chrome.storage.local.get();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `scraped-knees-data-${new Date().toISOString().split('T')[0]}.json`;
@@ -235,7 +235,7 @@ function showStatus(message, type = 'info') {
   const statusElement = document.getElementById('status-message');
   statusElement.textContent = message;
   statusElement.className = `status-message ${type} show`;
-  
+
   setTimeout(() => {
     statusElement.classList.remove('show');
   }, 5000);

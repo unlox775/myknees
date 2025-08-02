@@ -1,18 +1,14 @@
 // ScrapedKnees Options Page JavaScript
 
 class OptionsManager {
-    constructor() {
-        this.defaultOptions = {
-            aiProvider: 'none',
-            groqApiKey: '',
-            groqModel: 'llama3-8b-8192',
-            openrouterApiKey: '',
-            openrouterModel: 'anthropic/claude-3-haiku',
-            autoExtract: false,
-            saveTraining: true,
-            debugMode: false,
-            overlayOpacity: 0.7
-        };
+  constructor() {
+    this.defaultOptions = {
+      selectedProvider: null,
+      apiKeys: {},
+      selectedModels: {},
+      autoCheckStatus: true,
+      debugMode: false
+    };
         
         this.init();
     }
@@ -24,58 +20,57 @@ class OptionsManager {
         this.loadDataStats();
     }
 
-    bindEvents() {
-        // AI Provider selection
-        document.getElementById('ai-provider').addEventListener('change', (e) => {
-            this.toggleApiConfig(e.target.value);
-        });
+      bindEvents() {
+    // AI Provider selection
+    document.getElementById('ai-provider').addEventListener('change', (e) => {
+      this.toggleApiConfig(e.target.value);
+    });
 
-        // Password toggle buttons
-        document.querySelectorAll('.toggle-password').forEach(button => {
-            button.addEventListener('click', (e) => {
-                this.togglePasswordVisibility(e.target.dataset.target);
-            });
-        });
+    // Password toggle buttons
+    document.querySelectorAll('.toggle-password').forEach(button => {
+      button.addEventListener('click', (e) => {
+        this.togglePasswordVisibility(e.target.dataset.target);
+      });
+    });
 
-        // Opacity slider
-        document.getElementById('overlay-opacity').addEventListener('input', (e) => {
-            document.getElementById('opacity-value').textContent = `${Math.round(e.target.value * 100)}%`;
-        });
+    // Save options
+    document.getElementById('save-options').addEventListener('click', () => {
+      this.saveOptions();
+    });
 
-        // Save options
-        document.getElementById('save-options').addEventListener('click', () => {
-            this.saveOptions();
-        });
+    // Reset options
+    document.getElementById('reset-options').addEventListener('click', () => {
+      this.resetOptions();
+    });
 
-        // Reset options
-        document.getElementById('reset-options').addEventListener('click', () => {
-            this.resetOptions();
-        });
+    // Test connection
+    document.getElementById('test-connection').addEventListener('click', () => {
+      this.testConnection();
+    });
 
-        // Export data
-        document.getElementById('export-data').addEventListener('click', () => {
-            this.exportData();
-        });
+    // Check status
+    document.getElementById('check-status').addEventListener('click', () => {
+      this.checkStatus();
+    });
+  }
 
-        // Clear data
-        document.getElementById('clear-data').addEventListener('click', () => {
-            this.clearData();
-        });
+      toggleApiConfig(provider) {
+    // Hide all config sections
+    document.querySelectorAll('.api-config').forEach(config => {
+      config.style.display = 'none';
+    });
+
+    // Show selected provider config
+    if (provider === 'groq') {
+      document.getElementById('groq-config').style.display = 'block';
+    } else if (provider === 'openrouter') {
+      document.getElementById('openrouter-config').style.display = 'block';
+    } else if (provider === 'openai') {
+      document.getElementById('openai-config').style.display = 'block';
+    } else if (provider === 'anthropic') {
+      document.getElementById('anthropic-config').style.display = 'block';
     }
-
-    toggleApiConfig(provider) {
-        // Hide all config sections
-        document.querySelectorAll('.api-config').forEach(config => {
-            config.style.display = 'none';
-        });
-
-        // Show selected provider config
-        if (provider === 'groq') {
-            document.getElementById('groq-config').style.display = 'block';
-        } else if (provider === 'openrouter') {
-            document.getElementById('openrouter-config').style.display = 'block';
-        }
-    }
+  }
 
     togglePasswordVisibility(targetId) {
         const input = document.getElementById(targetId);
@@ -100,28 +95,30 @@ class OptionsManager {
         }
     }
 
-    updateUI() {
-        // Set AI provider
-        document.getElementById('ai-provider').value = this.options.aiProvider;
-        this.toggleApiConfig(this.options.aiProvider);
+      updateUI() {
+    // Set AI provider
+    document.getElementById('ai-provider').value = this.options.selectedProvider || 'none';
+    this.toggleApiConfig(this.options.selectedProvider || 'none');
 
-        // Set API keys
-        document.getElementById('groq-api-key').value = this.options.groqApiKey;
-        document.getElementById('openrouter-api-key').value = this.options.openrouterApiKey;
+    // Set API keys
+    document.getElementById('groq-api-key').value = this.options.apiKeys.groq || '';
+    document.getElementById('openrouter-api-key').value = this.options.apiKeys.openrouter || '';
+    document.getElementById('openai-api-key').value = this.options.apiKeys.openai || '';
+    document.getElementById('anthropic-api-key').value = this.options.apiKeys.anthropic || '';
 
-        // Set models
-        document.getElementById('groq-model').value = this.options.groqModel;
-        document.getElementById('openrouter-model').value = this.options.openrouterModel;
+    // Set models
+    document.getElementById('groq-model').value = this.options.selectedModels.groq || 'llama3-8b-8192';
+    document.getElementById('openrouter-model').value = this.options.selectedModels.openrouter || 'anthropic/claude-3-haiku';
+    document.getElementById('openai-model').value = this.options.selectedModels.openai || 'gpt-4o';
+    document.getElementById('anthropic-model').value = this.options.selectedModels.anthropic || 'claude-3-5-sonnet-20241022';
 
-        // Set checkboxes
-        document.getElementById('auto-extract').checked = this.options.autoExtract;
-        document.getElementById('save-training').checked = this.options.saveTraining;
-        document.getElementById('debug-mode').checked = this.options.debugMode;
+    // Set checkboxes
+    document.getElementById('auto-check-status').checked = this.options.autoCheckStatus;
+    document.getElementById('debug-mode').checked = this.options.debugMode;
 
-        // Set opacity
-        document.getElementById('overlay-opacity').value = this.options.overlayOpacity;
-        document.getElementById('opacity-value').textContent = `${Math.round(this.options.overlayOpacity * 100)}%`;
-    }
+    // Update status display
+    this.updateStatusDisplay();
+  }
 
     async saveOptions() {
         const saveButton = document.getElementById('save-options');
@@ -132,26 +129,28 @@ class OptionsManager {
             saveButton.disabled = true;
 
             // Collect form data
+            const selectedProvider = document.getElementById('ai-provider').value;
             const newOptions = {
-                aiProvider: document.getElementById('ai-provider').value,
-                groqApiKey: document.getElementById('groq-api-key').value,
-                groqModel: document.getElementById('groq-model').value,
-                openrouterApiKey: document.getElementById('openrouter-api-key').value,
-                openrouterModel: document.getElementById('openrouter-model').value,
-                autoExtract: document.getElementById('auto-extract').checked,
-                saveTraining: document.getElementById('save-training').checked,
-                debugMode: document.getElementById('debug-mode').checked,
-                overlayOpacity: parseFloat(document.getElementById('overlay-opacity').value)
+                selectedProvider: selectedProvider === 'none' ? null : selectedProvider,
+                apiKeys: {
+                    groq: document.getElementById('groq-api-key').value,
+                    openrouter: document.getElementById('openrouter-api-key').value,
+                    openai: document.getElementById('openai-api-key').value,
+                    anthropic: document.getElementById('anthropic-api-key').value
+                },
+                selectedModels: {
+                    groq: document.getElementById('groq-model').value,
+                    openrouter: document.getElementById('openrouter-model').value,
+                    openai: document.getElementById('openai-model').value,
+                    anthropic: document.getElementById('anthropic-model').value
+                },
+                autoCheckStatus: document.getElementById('auto-check-status').checked,
+                debugMode: document.getElementById('debug-mode').checked
             };
 
-            // Validate API keys if provider is selected
-            if (newOptions.aiProvider === 'groq' && !newOptions.groqApiKey) {
-                this.showStatus('Please enter your Groq.com API key', 'error');
-                return;
-            }
-
-            if (newOptions.aiProvider === 'openrouter' && !newOptions.openrouterApiKey) {
-                this.showStatus('Please enter your OpenRouter API key', 'error');
+            // Validate API key if provider is selected
+            if (selectedProvider !== 'none' && !newOptions.apiKeys[selectedProvider]) {
+                this.showStatus(`Please enter your ${selectedProvider} API key`, 'error');
                 return;
             }
 
@@ -160,6 +159,9 @@ class OptionsManager {
             this.options = newOptions;
 
                         this.showStatus('Options saved successfully!', 'success');
+            
+            // Update status display
+            this.updateStatusDisplay();
 
         } catch (error) {
             console.error('Error saving options:', error);
@@ -167,6 +169,86 @@ class OptionsManager {
         } finally {
             saveButton.textContent = originalText;
             saveButton.disabled = false;
+        }
+    }
+
+    async testConnection() {
+        const selectedProvider = this.options.selectedProvider;
+        if (!selectedProvider) {
+            this.showStatus('No provider selected', 'error');
+            return;
+        }
+
+        const apiKey = this.options.apiKeys[selectedProvider];
+        if (!apiKey) {
+            this.showStatus('No API key configured', 'error');
+            return;
+        }
+
+        try {
+            this.showStatus('Testing connection...', 'info');
+            
+            // Send message to background script to test connection
+            const response = await chrome.runtime.sendMessage({
+                type: 'TEST_AI_CONNECTION',
+                data: { provider: selectedProvider, apiKey }
+            });
+
+            if (response.success) {
+                this.showStatus('Connection successful!', 'success');
+            } else {
+                this.showStatus(`Connection failed: ${response.error}`, 'error');
+            }
+        } catch (error) {
+            this.showStatus('Error testing connection', 'error');
+        }
+    }
+
+    async checkStatus() {
+        try {
+            this.showStatus('Checking status...', 'info');
+            
+            const response = await chrome.runtime.sendMessage({
+                type: 'GET_AI_STATUS'
+            });
+
+            if (response.success) {
+                this.updateStatusDisplay(response.data);
+                this.showStatus('Status updated', 'success');
+            } else {
+                this.showStatus('Error checking status', 'error');
+            }
+        } catch (error) {
+            this.showStatus('Error checking status', 'error');
+        }
+    }
+
+    updateStatusDisplay(status = null) {
+        const selectedProvider = status?.provider || this.options.selectedProvider;
+        const isReady = status?.isReady || false;
+        const error = status?.error || null;
+        const lastChecked = status?.lastChecked || null;
+
+        document.getElementById('selected-provider').textContent = selectedProvider || 'None';
+        
+        const connectionStatus = document.getElementById('connection-status');
+        if (isReady) {
+            connectionStatus.textContent = '✅ Connected';
+            connectionStatus.className = 'status-connected';
+        } else if (error) {
+            connectionStatus.textContent = `❌ ${error}`;
+            connectionStatus.className = 'status-error';
+        } else {
+            connectionStatus.textContent = 'Not configured';
+            connectionStatus.className = '';
+        }
+
+        const lastCheckedElement = document.getElementById('last-checked');
+        if (lastChecked) {
+            const date = new Date(lastChecked);
+            lastCheckedElement.textContent = date.toLocaleString();
+        } else {
+            lastCheckedElement.textContent = 'Never';
         }
     }
 
@@ -186,60 +268,7 @@ class OptionsManager {
         }
     }
 
-    async loadDataStats() {
-        try {
-            const data = await chrome.storage.local.get(['trainingSessions', 'scrapedData']);
-            
-            const sessionCount = data.trainingSessions ? data.trainingSessions.length : 0;
-            const itemCount = data.scrapedData ? data.scrapedData.reduce((total, session) => total + (session.items ? session.items.length : 0), 0) : 0;
-            
-            // Calculate storage size (approximate)
-            const storageSize = JSON.stringify(data).length;
-            const storageUsed = storageSize < 1024 ? `${storageSize} B` : 
-                               storageSize < 1024 * 1024 ? `${(storageSize / 1024).toFixed(1)} KB` :
-                               `${(storageSize / (1024 * 1024)).toFixed(1)} MB`;
 
-            document.getElementById('session-count').textContent = sessionCount;
-            document.getElementById('item-count').textContent = itemCount;
-            document.getElementById('storage-used').textContent = storageUsed;
-        } catch (error) {
-            console.error('Error loading data stats:', error);
-        }
-    }
-
-    async exportData() {
-        try {
-            const data = await chrome.storage.local.get();
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `scraped-knees-data-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            this.showStatus('Data exported successfully!', 'success');
-        } catch (error) {
-            console.error('Error exporting data:', error);
-            this.showStatus('Error exporting data', 'error');
-        }
-    }
-
-    async clearData() {
-        if (confirm('Are you sure you want to clear all training sessions and scraped data? This action cannot be undone.')) {
-            try {
-                await chrome.storage.local.clear();
-                this.loadDataStats();
-                this.showStatus('All data cleared successfully', 'success');
-            } catch (error) {
-                console.error('Error clearing data:', error);
-                this.showStatus('Error clearing data', 'error');
-            }
-        }
-    }
 
     showStatus(message, type = 'info') {
         const statusElement = document.getElementById('status-message');

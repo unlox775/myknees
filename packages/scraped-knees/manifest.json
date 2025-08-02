@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Data Scraper",
+  "name": "ScrapedKnees",
   "version": "1.0.0",
-  "description": "AI-powered web data scraping with training capabilities",
+  "description": "AI-powered web data extraction tool. Train your AI to scrape data from any website with visual training and intelligent pattern recognition.",
   "permissions": [
     "activeTab",
     "storage",
@@ -23,10 +23,15 @@
       "run_at": "document_end"
     }
   ],
-          "action": {
-          "default_popup": "dist/popup.html",
-          "default_title": "AI Data Scraper"
-        },
+  "action": {
+    "default_popup": "dist/popup.html",
+    "default_title": "ScrapedKnees - AI Data Extraction",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
         "options_page": "dist/options.html",
   "icons": {
     "16": "icons/icon16.png",

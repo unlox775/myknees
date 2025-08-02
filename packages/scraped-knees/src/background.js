@@ -86,6 +86,16 @@ class BackgroundService {
           sendResponse({ success: true, data: options });
           break;
 
+        case 'TEST_AI_CONNECTION':
+          const testResult = await this.testAIConnection(message.data);
+          sendResponse({ success: testResult.success, error: testResult.error });
+          break;
+
+        case 'GET_AI_STATUS':
+          const status = await this.getAIStatus();
+          sendResponse({ success: true, data: status });
+          break;
+
         default:
           console.warn('Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -164,20 +174,51 @@ class BackgroundService {
   async getOptions() {
     try {
       const result = await chrome.storage.sync.get({
-        aiProvider: 'none',
-        groqApiKey: '',
-        groqModel: 'llama3-8b-8192',
-        openrouterApiKey: '',
-        openrouterModel: 'anthropic/claude-3-haiku',
-        autoExtract: false,
-        saveTraining: true,
-        debugMode: false,
-        overlayOpacity: 0.7
+        selectedProvider: null,
+        apiKeys: {},
+        selectedModels: {},
+        autoCheckStatus: true,
+        debugMode: false
       });
       return result;
     } catch (error) {
       console.error('Error getting options:', error);
       return {};
+    }
+  }
+
+  async testAIConnection(data) {
+    try {
+      const { provider, apiKey } = data;
+      
+      // Import AI Manager
+      const { AIManager } = await import('./ai-manager.js');
+      const aiManager = new AIManager();
+      
+      const result = await aiManager.testConnection(provider, apiKey);
+      return result;
+    } catch (error) {
+      console.error('Error testing AI connection:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async getAIStatus() {
+    try {
+      const { AIManager } = await import('./ai-manager.js');
+      const aiManager = new AIManager();
+      await aiManager.initialize();
+      
+      const status = await aiManager.checkStatus();
+      return status;
+    } catch (error) {
+      console.error('Error getting AI status:', error);
+      return {
+        isReady: false,
+        provider: null,
+        error: error.message,
+        lastChecked: Date.now()
+      };
     }
   }
 }
