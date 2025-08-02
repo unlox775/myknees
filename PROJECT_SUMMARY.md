@@ -111,8 +111,25 @@ A comprehensive Chrome extension framework for AI-powered web data scraping with
 └── PROJECT_SUMMARY.md        # This file
 ```
 
-## Available Scripts
+## Available Commands
 
+### Using Makefile (Recommended)
+```bash
+make help          # Show all available commands
+make install       # Install dependencies
+make build         # Build for production
+make dev           # Development mode with watch
+make test          # Run unit tests
+make test-watch    # Run tests in watch mode
+make lint          # Check code quality
+make lint-fix      # Fix linting issues
+make clean         # Clean build directory
+make package       # Create extension.zip
+make deploy        # Full deployment pipeline
+make status        # Check project status
+```
+
+### Using npm directly
 - `npm install` - Install dependencies
 - `npm run build` - Build for production
 - `npm run dev` - Development mode with watch
@@ -127,8 +144,8 @@ A comprehensive Chrome extension framework for AI-powered web data scraping with
 
 ### For Development
 1. Clone the repository
-2. Run `npm install` (creates `node_modules/` and `package-lock.json`)
-3. Run `npm run dev` (or `npm run build`)
+2. Run `make quick-dev` (installs dependencies and starts development mode)
+3. Or run `make install` then `make build` for production build
 4. Load `dist/` folder in Chrome extensions
 
 ### For End Users

@@ -21,17 +21,43 @@ A powerful Chrome extension that allows you to train an AI to extract data from 
    cd ai-data-scraper-extension
    ```
 
-2. **Install dependencies**
+2. **Install dependencies and build**
    ```bash
-   npm install
-   ```
-
-3. **Build the extension**
-   ```bash
-   npm run build
+   make install
+   make build
    ```
    
    > **Note**: The `dist/` folder will be created after building. This folder contains the built extension files that you'll load into Chrome.
+
+### Using Makefile (Recommended)
+
+The project includes a comprehensive Makefile for easy development:
+
+```bash
+# Show all available commands
+make help
+
+# Quick setup and development
+make quick-dev      # Install + start development mode
+make quick-build    # Install + build for production
+make quick-test     # Install + run tests
+
+# Individual commands
+make install        # Install dependencies
+make build          # Build for production
+make dev            # Start development mode with watch
+make test           # Run unit tests
+make lint           # Check code quality
+make package        # Create extension.zip
+make deploy         # Full deployment pipeline
+
+# Chrome extension specific
+make load-chrome    # Show instructions for loading in Chrome
+make reload-chrome  # Show instructions for reloading
+
+# Project status
+make status         # Check project status and next steps
+```
 
 4. **Load in Chrome**
    - Open Chrome and go to `chrome://extensions/`

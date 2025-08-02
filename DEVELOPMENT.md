@@ -7,6 +7,7 @@ This guide will help you get started with developing the AI Data Scraper Chrome 
 - Node.js (v14 or higher)
 - npm (v6 or higher)
 - Google Chrome browser
+- Make (for using the Makefile commands)
 
 ## Quick Setup
 
@@ -16,18 +17,27 @@ This guide will help you get started with developing the AI Data Scraper Chrome 
    cd ai-data-scraper-extension
    ```
 
-2. **Install dependencies**
+2. **Quick development setup**
    ```bash
-   npm install
+   make quick-dev
    ```
-   
-   > **Note**: The `node_modules/` directory and `package-lock.json` are excluded from version control via `.gitignore`. They will be created when you run `npm install`.
+   This will install dependencies and start development mode with watch.
 
-2. **Start development mode**
-   ```bash
-   npm run dev
-   ```
-   This will watch for file changes and rebuild automatically.
+   > **Note**: The `node_modules/` directory and `package-lock.json` are excluded from version control via `.gitignore`. They will be created when you run `make install`.
+
+### Alternative Setup
+
+If you prefer manual setup:
+
+```bash
+# Install dependencies
+make install
+
+# Start development mode
+make dev
+```
+
+This will watch for file changes and rebuild automatically.
 
 3. **Load extension in Chrome**
    - Open Chrome and navigate to `chrome://extensions/`
@@ -50,17 +60,17 @@ This guide will help you get started with developing the AI Data Scraper Chrome 
 
 1. **Run unit tests**
    ```bash
-   npm test
+   make test
    ```
 
 2. **Run tests in watch mode**
    ```bash
-   npm run test:watch
+   make test-watch
    ```
 
 3. **Lint code**
    ```bash
-   npm run lint
+   make lint
    ```
 
 ### Debugging
@@ -80,6 +90,51 @@ This guide will help you get started with developing the AI Data Scraper Chrome 
    - Right-click the extension icon
    - Select "Inspect popup"
    - Use DevTools to debug
+
+## Makefile Commands
+
+The project includes a comprehensive Makefile for easy development. Run `make help` to see all available commands.
+
+### Quick Commands
+```bash
+make help          # Show all available commands
+make status        # Check project status and next steps
+make quick-dev     # Install + start development mode
+make quick-build   # Install + build for production
+make quick-test    # Install + run tests
+```
+
+### Development Commands
+```bash
+make install       # Install dependencies
+make dev           # Start development mode with watch
+make build         # Build for production
+make clean         # Clean build artifacts
+```
+
+### Testing Commands
+```bash
+make test          # Run unit tests
+make test-watch    # Run tests in watch mode
+```
+
+### Code Quality Commands
+```bash
+make lint          # Check code quality
+make lint-fix      # Fix linting issues
+```
+
+### Deployment Commands
+```bash
+make package       # Create extension.zip
+make deploy        # Full deployment pipeline
+```
+
+### Chrome Extension Commands
+```bash
+make load-chrome   # Show instructions for loading in Chrome
+make reload-chrome # Show instructions for reloading extension
+```
 
 ## File Structure
 
@@ -204,14 +259,20 @@ document.head.appendChild(script);
 
 1. **Build for production**
    ```bash
-   npm run build
+   make build
    ```
 
 2. **Package extension**
    ```bash
-   npm run package
+   make package
    ```
    This creates `extension.zip`
+
+3. **Full deployment pipeline**
+   ```bash
+   make deploy
+   ```
+   This runs clean, lint, test, build, and package in sequence.
 
 3. **Upload to Chrome Web Store** (when ready)
 
