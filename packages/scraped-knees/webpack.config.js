@@ -8,11 +8,11 @@ module.exports = (env, argv) => {
   
   return {
       entry: {
-    background: './src/background.js',
-    content: ['./src/content.js', './src/content.css'],
-    popup: ['./src/popup.js', './src/popup.css'],
-    injected: './src/injected.js',
-    options: ['./src/options.js', './src/options.css']
+    background: './src/services/background.js',
+    content: ['./src/ui/content/content.js', './src/ui/content/content.css'],
+    popup: ['./src/ui/popup/popup.js', './src/ui/popup/popup.css'],
+    injected: './src/services/injected.js',
+    options: ['./src/ui/options/options.js', './src/ui/options/options.css']
   },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -42,12 +42,12 @@ module.exports = (env, argv) => {
     },
                plugins: [
              new HtmlWebpackPlugin({
-               template: './src/popup.html',
+               template: './src/ui/popup/popup.html',
                filename: 'popup.html',
                chunks: ['popup']
              }),
              new HtmlWebpackPlugin({
-               template: './src/options.html',
+               template: './src/ui/options/options.html',
                filename: 'options.html',
                chunks: ['options']
              }),

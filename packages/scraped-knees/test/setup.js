@@ -96,6 +96,9 @@ global.console = {
   debug: jest.fn()
 };
 
+// Mock fetch for testing
+global.fetch = jest.fn();
+
 // Setup cleanup after each test
 afterEach(() => {
   // Clear all mocks

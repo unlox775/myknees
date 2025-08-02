@@ -268,26 +268,34 @@ class OptionsManager {
         const error = status?.error || null;
         const lastChecked = status?.lastChecked || null;
 
-        document.getElementById('selected-provider').textContent = selectedProvider || 'None';
+        const selectedProviderEl = document.getElementById('selected-provider');
+        const connectionStatusEl = document.getElementById('connection-status');
+        const lastCheckedEl = document.getElementById('last-checked');
+
+        if (selectedProviderEl) {
+            selectedProviderEl.textContent = selectedProvider || 'None';
+        }
         
-        const connectionStatus = document.getElementById('connection-status');
-        if (isReady) {
-            connectionStatus.textContent = '✅ Connected';
-            connectionStatus.className = 'status-connected';
-        } else if (error) {
-            connectionStatus.textContent = `❌ ${error}`;
-            connectionStatus.className = 'status-error';
-        } else {
-            connectionStatus.textContent = 'Not configured';
-            connectionStatus.className = '';
+        if (connectionStatusEl) {
+            if (isReady) {
+                connectionStatusEl.textContent = '✅ Connected';
+                connectionStatusEl.className = 'status-connected';
+            } else if (error) {
+                connectionStatusEl.textContent = `❌ ${error}`;
+                connectionStatusEl.className = 'status-error';
+            } else {
+                connectionStatusEl.textContent = 'Not configured';
+                connectionStatusEl.className = '';
+            }
         }
 
-        const lastCheckedElement = document.getElementById('last-checked');
-        if (lastChecked) {
-            const date = new Date(lastChecked);
-            lastCheckedElement.textContent = date.toLocaleString();
-        } else {
-            lastCheckedElement.textContent = 'Never';
+        if (lastCheckedEl) {
+            if (lastChecked) {
+                const date = new Date(lastChecked);
+                lastCheckedEl.textContent = date.toLocaleString();
+            } else {
+                lastCheckedEl.textContent = 'Never';
+            }
         }
     }
 
@@ -407,13 +415,15 @@ class OptionsManager {
 
     showStatus(message, type = 'info') {
         const statusElement = document.getElementById('status-message');
-        statusElement.textContent = message;
-        statusElement.className = `status-message ${type} show`;
-        
-        // Auto-hide after 5 seconds
-        setTimeout(() => {
-            statusElement.classList.remove('show');
-        }, 5000);
+        if (statusElement) {
+            statusElement.textContent = message;
+            statusElement.className = `status-message ${type} show`;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                statusElement.classList.remove('show');
+            }, 5000);
+        }
     }
 }
 
