@@ -10,10 +10,18 @@ This guide will help you get started with developing the AI Data Scraper Chrome 
 
 ## Quick Setup
 
-1. **Install dependencies**
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd ai-data-scraper-extension
+   ```
+
+2. **Install dependencies**
    ```bash
    npm install
    ```
+   
+   > **Note**: The `node_modules/` directory and `package-lock.json` are excluded from version control via `.gitignore`. They will be created when you run `npm install`.
 
 2. **Start development mode**
    ```bash

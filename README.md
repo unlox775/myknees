@@ -30,6 +30,8 @@ A powerful Chrome extension that allows you to train an AI to extract data from 
    ```bash
    npm run build
    ```
+   
+   > **Note**: The `dist/` folder will be created after building. This folder contains the built extension files that you'll load into Chrome.
 
 4. **Load in Chrome**
    - Open Chrome and go to `chrome://extensions/`

@@ -127,7 +127,7 @@ A comprehensive Chrome extension framework for AI-powered web data scraping with
 
 ### For Development
 1. Clone the repository
-2. Run `npm install`
+2. Run `npm install` (creates `node_modules/` and `package-lock.json`)
 3. Run `npm run dev` (or `npm run build`)
 4. Load `dist/` folder in Chrome extensions
 
