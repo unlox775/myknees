@@ -17,7 +17,13 @@ class OptionsManager {
         this.bindEvents();
         await this.loadOptions();
         this.updateUI();
-        this.loadDataStats();
+        
+        // Auto-check status if enabled
+        if (this.options.autoCheckStatus && this.options.selectedProvider) {
+            setTimeout(() => {
+                this.checkStatus();
+            }, 500); // Small delay to ensure UI is loaded
+        }
     }
 
       bindEvents() {
@@ -51,6 +57,11 @@ class OptionsManager {
     // Check status
     document.getElementById('check-status').addEventListener('click', () => {
       this.checkStatus();
+    });
+
+    // Debug mode toggle
+    document.getElementById('debug-mode').addEventListener('change', (e) => {
+      this.toggleDebugMode(e.target.checked);
     });
   }
 
@@ -129,6 +140,9 @@ class OptionsManager {
 
     // Update status display
     this.updateStatusDisplay();
+    
+    // Show/hide debug section based on debug mode
+    this.toggleDebugMode(this.options.debugMode);
   }
 
     async saveOptions() {
@@ -234,6 +248,11 @@ class OptionsManager {
             if (response.success) {
                 this.updateStatusDisplay(response.data);
                 this.showStatus('Status updated', 'success');
+                
+                // Update debug info if debug mode is enabled
+                if (this.options.debugMode) {
+                    this.loadDebugInfo();
+                }
             } else {
                 this.showStatus('Error checking status', 'error');
             }
@@ -289,6 +308,49 @@ class OptionsManager {
     }
 
 
+
+    toggleDebugMode(enabled) {
+        const debugSection = document.getElementById('debug-section');
+        if (enabled) {
+            debugSection.style.display = 'block';
+            this.loadDebugInfo();
+        } else {
+            debugSection.style.display = 'none';
+        }
+    }
+
+    async loadDebugInfo() {
+        try {
+            const response = await chrome.runtime.sendMessage({
+                type: 'GET_USAGE_STATS'
+            });
+
+            if (response.success) {
+                this.updateDebugDisplay(response.data);
+            }
+        } catch (error) {
+            console.error('Error loading debug info:', error);
+        }
+    }
+
+    updateDebugDisplay(usageStats) {
+        const selectedProvider = this.options.selectedProvider;
+        if (!selectedProvider || !usageStats[selectedProvider]) {
+            document.getElementById('total-requests').textContent = '0';
+            document.getElementById('last-used').textContent = 'Never';
+            return;
+        }
+
+        const stats = usageStats[selectedProvider];
+        document.getElementById('total-requests').textContent = stats.requests.toString();
+        
+        if (stats.lastUsed) {
+            const date = new Date(stats.lastUsed);
+            document.getElementById('last-used').textContent = date.toLocaleString();
+        } else {
+            document.getElementById('last-used').textContent = 'Never';
+        }
+    }
 
     showStatus(message, type = 'info') {
         const statusElement = document.getElementById('status-message');

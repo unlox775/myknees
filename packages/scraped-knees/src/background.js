@@ -100,6 +100,13 @@ class BackgroundService {
           sendResponse({ success: true, data: status });
           break;
 
+        case 'GET_USAGE_STATS':
+          console.log('Getting usage stats');
+          const usageStats = await this.getUsageStats();
+          console.log('Usage stats:', usageStats);
+          sendResponse({ success: true, data: usageStats });
+          break;
+
         default:
           console.warn('Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -294,12 +301,15 @@ class BackgroundService {
       const options = await this.getOptions();
       const selectedProvider = options.selectedProvider;
       
+      // Try to get cached status first
+      const { aiStatus } = await chrome.storage.local.get(['aiStatus']);
+      
       if (!selectedProvider) {
         return {
           isReady: false,
           provider: null,
           error: 'No provider selected',
-          lastChecked: Date.now()
+          lastChecked: aiStatus?.lastChecked || null
         };
       }
 
@@ -314,12 +324,23 @@ class BackgroundService {
       }
 
       const testResult = await this.simpleTestConnection(selectedProvider, apiKey);
-      return {
+      
+      // Store status persistently
+      const statusData = {
         isReady: testResult.success,
         provider: selectedProvider,
         error: testResult.error,
         lastChecked: Date.now()
       };
+      
+      await chrome.storage.local.set({ aiStatus: statusData });
+      
+      // Update usage stats if successful
+      if (testResult.success) {
+        await this.updateUsageStats(selectedProvider, 1);
+      }
+      
+      return statusData;
     } catch (error) {
       console.error('Error getting AI status:', error);
       return {
@@ -328,6 +349,34 @@ class BackgroundService {
         error: error.message,
         lastChecked: Date.now()
       };
+    }
+  }
+
+  async updateUsageStats(provider, requests = 1) {
+    try {
+      const { usageStats } = await chrome.storage.local.get(['usageStats']);
+      const currentStats = usageStats || {};
+      
+      if (!currentStats[provider]) {
+        currentStats[provider] = { requests: 0, tokens: 0, lastUsed: null };
+      }
+      
+      currentStats[provider].requests += requests;
+      currentStats[provider].lastUsed = Date.now();
+      
+      await chrome.storage.local.set({ usageStats: currentStats });
+    } catch (error) {
+      console.error('Error updating usage stats:', error);
+    }
+  }
+
+  async getUsageStats() {
+    try {
+      const { usageStats } = await chrome.storage.local.get(['usageStats']);
+      return usageStats || {};
+    } catch (error) {
+      console.error('Error getting usage stats:', error);
+      return {};
     }
   }
 }
