@@ -83,6 +83,8 @@ build-icon: check-deps
 	@echo "Converting icon.png to multiple sizes..."
 	@mkdir -p src/icons
 	@cp icon.png src/icons/icon128.png
+	@cp icon.png src/icons/icon48.png
+	@cp icon.png src/icons/icon16.png
 	@echo "✅ Icons built successfully"
 	@echo "📁 Icon files created in src/icons/"
 
