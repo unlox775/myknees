@@ -74,7 +74,12 @@ class OptionsManager {
 
     togglePasswordVisibility(targetId) {
         const input = document.getElementById(targetId);
-        const button = document.querySelector(`[data-target="${targetId}"]`);
+        const button = document.querySelector(`button[data-target="${targetId}"]`);
+        
+        if (!input || !button) {
+            console.error('Could not find input or button for:', targetId);
+            return;
+        }
         
         if (input.type === 'password') {
             input.type = 'text';
@@ -173,13 +178,14 @@ class OptionsManager {
     }
 
     async testConnection() {
-        const selectedProvider = this.options.selectedProvider;
-        if (!selectedProvider) {
+        // Get current values from the form, not from saved options
+        const selectedProvider = document.getElementById('ai-provider').value;
+        if (selectedProvider === 'none' || !selectedProvider) {
             this.showStatus('No provider selected', 'error');
             return;
         }
 
-        const apiKey = this.options.apiKeys[selectedProvider];
+        const apiKey = document.getElementById(`${selectedProvider}-api-key`).value;
         if (!apiKey) {
             this.showStatus('No API key configured', 'error');
             return;

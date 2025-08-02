@@ -191,11 +191,8 @@ class BackgroundService {
     try {
       const { provider, apiKey } = data;
       
-      // Import AI Manager
-      const { AIManager } = await import('./ai-manager.js');
-      const aiManager = new AIManager();
-      
-      const result = await aiManager.testConnection(provider, apiKey);
+      // Create a simple test connection without importing AI Manager
+      const result = await this.simpleTestConnection(provider, apiKey);
       return result;
     } catch (error) {
       console.error('Error testing AI connection:', error);
@@ -203,14 +200,119 @@ class BackgroundService {
     }
   }
 
+  async simpleTestConnection(provider, apiKey) {
+    try {
+      let testUrl, headers, body;
+      
+      if (provider === 'groq') {
+        testUrl = 'https://api.groq.com/openai/v1/chat/completions';
+        headers = {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        };
+        body = JSON.stringify({
+          model: 'llama3-8b-8192',
+          messages: [{ role: 'user', content: 'Hello! This is a connection test from ScrapedKnees.' }],
+          max_tokens: 10
+        });
+      } else if (provider === 'openai') {
+        testUrl = 'https://api.openai.com/v1/chat/completions';
+        headers = {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        };
+        body = JSON.stringify({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: 'Hello! This is a connection test from ScrapedKnees.' }],
+          max_tokens: 10
+        });
+      } else if (provider === 'anthropic') {
+        testUrl = 'https://api.anthropic.com/v1/messages';
+        headers = {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01'
+        };
+        body = JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Hello! This is a connection test from ScrapedKnees.' }]
+        });
+      } else if (provider === 'openrouter') {
+        testUrl = 'https://openrouter.ai/api/v1/chat/completions';
+        headers = {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': chrome.runtime.getURL(''),
+          'X-Title': 'ScrapedKnees'
+        };
+        body = JSON.stringify({
+          model: 'anthropic/claude-3-haiku',
+          messages: [{ role: 'user', content: 'Hello! This is a connection test from ScrapedKnees.' }],
+          max_tokens: 10
+        });
+      } else {
+        return { success: false, error: 'Unknown provider' };
+      }
+
+      const response = await fetch(testUrl, {
+        method: 'POST',
+        headers,
+        body
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        let errorMessage = 'API error';
+        
+        if (response.status === 401) errorMessage = 'Invalid API key';
+        else if (response.status === 403) errorMessage = 'API key does not have required permissions';
+        else if (response.status === 429) errorMessage = 'Rate limit exceeded';
+        else if (response.status === 402) errorMessage = 'Billing issue';
+        else if (response.status >= 500) errorMessage = 'Service temporarily unavailable';
+        else if (errorData.error?.message) errorMessage = errorData.error.message;
+        else errorMessage = `API error (${response.status})`;
+        
+        return { success: false, error: errorMessage };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
   async getAIStatus() {
     try {
-      const { AIManager } = await import('./ai-manager.js');
-      const aiManager = new AIManager();
-      await aiManager.initialize();
+      const options = await this.getOptions();
+      const selectedProvider = options.selectedProvider;
       
-      const status = await aiManager.checkStatus();
-      return status;
+      if (!selectedProvider) {
+        return {
+          isReady: false,
+          provider: null,
+          error: 'No provider selected',
+          lastChecked: Date.now()
+        };
+      }
+
+      const apiKey = options.apiKeys[selectedProvider];
+      if (!apiKey) {
+        return {
+          isReady: false,
+          provider: selectedProvider,
+          error: 'No API key configured',
+          lastChecked: Date.now()
+        };
+      }
+
+      const testResult = await this.simpleTestConnection(selectedProvider, apiKey);
+      return {
+        isReady: testResult.success,
+        provider: selectedProvider,
+        error: testResult.error,
+        lastChecked: Date.now()
+      };
     } catch (error) {
       console.error('Error getting AI status:', error);
       return {
