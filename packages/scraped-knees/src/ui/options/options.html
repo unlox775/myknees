@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScrapedKnees Options</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🕷️ ScrapedKnees Options</h1>
+            <p>Configure your AI API settings for enhanced data extraction</p>
+        </header>
+
+        <main>
+            <section class="api-section">
+                <h2>🤖 AI Provider Configuration</h2>
+                <p class="description">
+                    Configure your AI provider to enable intelligent data extraction and pattern recognition.
+                    Your API keys are stored locally and never shared.
+                </p>
+
+                <div class="provider-selector">
+                    <label for="ai-provider">AI Provider:</label>
+                    <select id="ai-provider">
+                        <option value="none">No AI (Basic Mode)</option>
+                        <option value="groq">Groq</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic Claude</option>
+                    </select>
+                </div>
+
+                <div id="groq-config" class="api-config" style="display: none;">
+                    <h3>Groq Configuration</h3>
+                    <div class="input-group">
+                        <label for="groq-api-key">API Key:</label>
+                        <input type="password" id="groq-api-key" placeholder="Enter your Groq API key">
+                        <button type="button" class="toggle-password" data-target="groq-api-key">👁️</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="groq-model">Model:</label>
+                        <select id="groq-model">
+                            <option value="llama3-8b-8192">Llama3-8b-8192 (Fast)</option>
+                            <option value="llama3-70b-8192">Llama3-70b-8192 (Balanced)</option>
+                            <option value="mixtral-8x7b-32768">Mixtral-8x7b-32768 (Powerful)</option>
+                            <option value="gemma2-9b-it">Gemma2-9b-it (Efficient)</option>
+                        </select>
+                    </div>
+                                    <p class="help-text">
+                    Get your API key from <a href="https://console.groq.com/" target="_blank">Groq Console</a>
+                    <br><small>Note: AI features are not yet implemented. This is for future use.</small>
+                </p>
+                </div>
+
+                <div id="openrouter-config" class="api-config" style="display: none;">
+                    <h3>OpenRouter Configuration</h3>
+                    <div class="input-group">
+                        <label for="openrouter-api-key">API Key:</label>
+                        <input type="password" id="openrouter-api-key" placeholder="Enter your OpenRouter API key">
+                        <button type="button" class="toggle-password" data-target="openrouter-api-key">👁️</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="openrouter-model">Model:</label>
+                        <select id="openrouter-model">
+                            <option value="anthropic/claude-3-haiku">Claude 3 Haiku (Fast)</option>
+                            <option value="anthropic/claude-3-sonnet">Claude 3 Sonnet (Balanced)</option>
+                            <option value="anthropic/claude-3-opus">Claude 3 Opus (Powerful)</option>
+                            <option value="openai/gpt-4o">GPT-4o (OpenAI)</option>
+                            <option value="openai/gpt-4o-mini">GPT-4o Mini (Efficient)</option>
+                            <option value="meta-llama/llama-3.1-8b-instruct">Llama 3.1 8B (Fast)</option>
+                            <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B (Powerful)</option>
+                        </select>
+                    </div>
+                                                        <p class="help-text">
+                        Get your API key from <a href="https://openrouter.ai/keys" target="_blank">OpenRouter</a>
+                        <br><small>Note: AI features are not yet implemented. This is for future use.</small>
+                    </p>
+                </div>
+
+                <div id="openai-config" class="api-config" style="display: none;">
+                    <h3>OpenAI Configuration</h3>
+                    <div class="input-group">
+                        <label for="openai-api-key">API Key:</label>
+                        <input type="password" id="openai-api-key" placeholder="Enter your OpenAI API key">
+                        <button type="button" class="toggle-password" data-target="openai-api-key">👁️</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="openai-model">Model:</label>
+                        <select id="openai-model">
+                            <option value="gpt-4o">GPT-4o (Latest)</option>
+                            <option value="gpt-4o-mini">GPT-4o Mini (Efficient)</option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Fast)</option>
+                        </select>
+                    </div>
+                    <p class="help-text">
+                        Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a>
+                        <br><small>Note: AI features are not yet implemented. This is for future use.</small>
+                    </p>
+                </div>
+
+                <div id="anthropic-config" class="api-config" style="display: none;">
+                    <h3>Anthropic Claude Configuration</h3>
+                    <div class="input-group">
+                        <label for="anthropic-api-key">API Key:</label>
+                        <input type="password" id="anthropic-api-key" placeholder="Enter your Anthropic API key">
+                        <button type="button" class="toggle-password" data-target="anthropic-api-key">👁️</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="anthropic-model">Model:</label>
+                        <select id="anthropic-model">
+                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Latest)</option>
+                            <option value="claude-3-opus-20240229">Claude 3 Opus (Powerful)</option>
+                            <option value="claude-3-sonnet-20240229">Claude 3 Sonnet (Balanced)</option>
+                        </select>
+                    </div>
+                    <p class="help-text">
+                        Get your API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a>
+                        <br><small>Note: AI features are not yet implemented. This is for future use.</small>
+                    </p>
+                </div>
+            </section>
+
+            <section class="settings-section">
+                <h2>⚙️ General Settings</h2>
+                
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="auto-check-status">
+                        <span class="checkmark"></span>
+                        Automatically check API status
+                    </label>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="debug-mode">
+                        <span class="checkmark"></span>
+                        Enable debug mode (shows detailed logs)
+                    </label>
+                </div>
+            </section>
+
+            <section class="status-section">
+                <h2>📊 AI Provider Status</h2>
+                
+                <div class="status-display">
+                    <div class="status-item">
+                        <span class="status-label">Selected Provider:</span>
+                        <span id="selected-provider">None</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Connection Status:</span>
+                        <span id="connection-status">Not configured</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Last Checked:</span>
+                        <span id="last-checked">Never</span>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" id="test-connection" class="btn btn-secondary">
+                        🔄 Test Connection
+                    </button>
+                    <button type="button" id="check-status" class="btn btn-secondary">
+                        📊 Check Status
+                    </button>
+                </div>
+
+                <div id="debug-section" class="debug-section" style="display: none;">
+                    <h3>🔍 Debug Information</h3>
+                    
+                    <!-- Usage Statistics Table -->
+                    <div class="usage-table-section">
+                        <h4>📊 Usage Statistics</h4>
+                        <table id="usage-table" class="usage-table">
+                            <thead>
+                                <tr>
+                                    <th>Provider</th>
+                                    <th>Model</th>
+                                    <th>Total Requests</th>
+                                    <th>Last Used</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usage-table-body">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Request/Response Log -->
+                    <div class="log-section">
+                        <h4>📝 Request/Response Log (Last 50)</h4>
+                        <div id="log-container" class="log-container">
+                            <table id="log-table" class="log-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date/Time</th>
+                                        <th>Request</th>
+                                        <th>Response</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="log-table-body">
+                                    <!-- Populated by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="button-group">
+                <button type="button" id="save-options" class="btn btn-primary">
+                    💾 Save Options
+                </button>
+                <button type="button" id="reset-options" class="btn btn-secondary">
+                    🔄 Reset to Defaults
+                </button>
+            </div>
+            <div id="status-message" class="status-message"></div>
+        </footer>
+    </div>
+
+    <script src="options.js"></script>
+</body>
+</html>
