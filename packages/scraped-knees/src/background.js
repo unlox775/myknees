@@ -87,12 +87,16 @@ class BackgroundService {
           break;
 
         case 'TEST_AI_CONNECTION':
+          console.log('Testing AI connection:', message.data);
           const testResult = await this.testAIConnection(message.data);
+          console.log('Test result:', testResult);
           sendResponse({ success: testResult.success, error: testResult.error });
           break;
 
         case 'GET_AI_STATUS':
+          console.log('Getting AI status');
           const status = await this.getAIStatus();
+          console.log('AI status:', status);
           sendResponse({ success: true, data: status });
           break;
 

@@ -12,7 +12,7 @@ module.exports = (env, argv) => {
     content: './src/content.js',
     popup: './src/popup.js',
     injected: './src/injected.js',
-    options: './src/options.js'
+    options: ['./src/options.js', './src/options.css']
   },
     output: {
       path: path.resolve(__dirname, 'dist'),

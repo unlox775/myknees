@@ -193,6 +193,7 @@ class OptionsManager {
 
         try {
             this.showStatus('Testing connection...', 'info');
+            console.log('Sending test connection message:', { provider: selectedProvider, apiKey: '***' });
             
             // Send message to background script to test connection
             const response = await chrome.runtime.sendMessage({
@@ -200,12 +201,15 @@ class OptionsManager {
                 data: { provider: selectedProvider, apiKey }
             });
 
+            console.log('Received test connection response:', response);
+
             if (response.success) {
                 this.showStatus('Connection successful!', 'success');
             } else {
                 this.showStatus(`Connection failed: ${response.error}`, 'error');
             }
         } catch (error) {
+            console.error('Error in test connection:', error);
             this.showStatus('Error testing connection', 'error');
         }
     }
@@ -213,10 +217,13 @@ class OptionsManager {
     async checkStatus() {
         try {
             this.showStatus('Checking status...', 'info');
+            console.log('Sending get AI status message');
             
             const response = await chrome.runtime.sendMessage({
                 type: 'GET_AI_STATUS'
             });
+
+            console.log('Received AI status response:', response);
 
             if (response.success) {
                 this.updateStatusDisplay(response.data);
@@ -225,6 +232,7 @@ class OptionsManager {
                 this.showStatus('Error checking status', 'error');
             }
         } catch (error) {
+            console.error('Error in check status:', error);
             this.showStatus('Error checking status', 'error');
         }
     }
