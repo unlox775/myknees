@@ -107,6 +107,13 @@ class BackgroundService {
           sendResponse({ success: true, data: usageStats });
           break;
 
+        case 'GET_REQUEST_LOG':
+          console.log('Getting request log');
+          const requestLog = await this.getRequestLog();
+          console.log('Request log:', requestLog);
+          sendResponse({ success: true, data: requestLog });
+          break;
+
         default:
           console.warn('Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -268,6 +275,11 @@ class BackgroundService {
       }
 
       console.log('Making API call to:', testUrl);
+      
+      // Log the request
+      const requestData = JSON.parse(body);
+      await this.logRequest(provider, requestData.model, requestData, { status: 'pending' }, true);
+      
       const response = await fetch(testUrl, {
         method: 'POST',
         headers,
@@ -275,8 +287,16 @@ class BackgroundService {
       });
 
       console.log('API response status:', response.status);
+      
+      let responseData;
+      try {
+        responseData = await response.json();
+      } catch (e) {
+        responseData = { error: 'Invalid JSON response' };
+      }
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = responseData;
         let errorMessage = 'API error';
         
         if (response.status === 401) errorMessage = 'Invalid API key';
@@ -287,9 +307,15 @@ class BackgroundService {
         else if (errorData.error?.message) errorMessage = errorData.error.message;
         else errorMessage = `API error (${response.status})`;
         
+        // Update the log entry with the error response
+        await this.logRequest(provider, requestData.model, requestData, responseData, false);
+        
         return { success: false, error: errorMessage };
       }
 
+      // Update the log entry with the success response
+      await this.logRequest(provider, requestData.model, requestData, responseData, true);
+      
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
@@ -352,21 +378,56 @@ class BackgroundService {
     }
   }
 
-  async updateUsageStats(provider, requests = 1) {
+  async updateUsageStats(provider, requests = 1, model = null) {
     try {
       const { usageStats } = await chrome.storage.local.get(['usageStats']);
       const currentStats = usageStats || {};
       
       if (!currentStats[provider]) {
-        currentStats[provider] = { requests: 0, tokens: 0, lastUsed: null };
+        currentStats[provider] = { requests: 0, tokens: 0, lastUsed: null, models: {} };
       }
       
       currentStats[provider].requests += requests;
       currentStats[provider].lastUsed = Date.now();
       
+      if (model) {
+        if (!currentStats[provider].models[model]) {
+          currentStats[provider].models[model] = { requests: 0, lastUsed: null };
+        }
+        currentStats[provider].models[model].requests += requests;
+        currentStats[provider].models[model].lastUsed = Date.now();
+      }
+      
       await chrome.storage.local.set({ usageStats: currentStats });
     } catch (error) {
       console.error('Error updating usage stats:', error);
+    }
+  }
+
+  async logRequest(provider, model, request, response, success = true) {
+    try {
+      const { requestLog } = await chrome.storage.local.get(['requestLog']);
+      const log = requestLog || [];
+      
+      const logEntry = {
+        timestamp: Date.now(),
+        provider,
+        model,
+        request: JSON.stringify(request, null, 2),
+        response: JSON.stringify(response, null, 2),
+        success
+      };
+      
+      log.unshift(logEntry); // Add to beginning
+      
+      // Keep only last 50 entries
+      if (log.length > 50) {
+        log.splice(50);
+      }
+      
+      await chrome.storage.local.set({ requestLog: log });
+    } catch (error) {
+      console.error('Error logging request:', error);
     }
   }
 
@@ -377,6 +438,16 @@ class BackgroundService {
     } catch (error) {
       console.error('Error getting usage stats:', error);
       return {};
+    }
+  }
+
+  async getRequestLog() {
+    try {
+      const { requestLog } = await chrome.storage.local.get(['requestLog']);
+      return requestLog || [];
+    } catch (error) {
+      console.error('Error getting request log:', error);
+      return [];
     }
   }
 }

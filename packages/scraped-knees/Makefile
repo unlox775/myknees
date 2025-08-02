@@ -73,6 +73,19 @@ test: check-deps
 	npm test
 	@echo "✅ Tests completed"
 
+build-icon: check-deps
+	@echo "Building extension icons..."
+	@if [ ! -f icon.png ]; then \
+		echo "❌ icon.png not found. Please add your custom 128x128 PNG icon to the root directory."; \
+		echo "   Then run: make build-icon"; \
+		exit 1; \
+	fi
+	@echo "Converting icon.png to multiple sizes..."
+	@mkdir -p src/icons
+	@cp icon.png src/icons/icon128.png
+	@echo "✅ Icons built successfully"
+	@echo "📁 Icon files created in src/icons/"
+
 test-watch: check-deps
 	@echo "Running tests in watch mode..."
 	@echo "🔄 Tests will re-run on file changes"

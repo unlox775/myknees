@@ -321,35 +321,88 @@ class OptionsManager {
 
     async loadDebugInfo() {
         try {
-            const response = await chrome.runtime.sendMessage({
+            // Load usage stats
+            const usageResponse = await chrome.runtime.sendMessage({
                 type: 'GET_USAGE_STATS'
             });
 
-            if (response.success) {
-                this.updateDebugDisplay(response.data);
+            if (usageResponse.success) {
+                this.updateUsageTable(usageResponse.data);
+            }
+
+            // Load request log
+            const logResponse = await chrome.runtime.sendMessage({
+                type: 'GET_REQUEST_LOG'
+            });
+
+            if (logResponse.success) {
+                this.updateRequestLog(logResponse.data);
             }
         } catch (error) {
             console.error('Error loading debug info:', error);
         }
     }
 
-    updateDebugDisplay(usageStats) {
-        const selectedProvider = this.options.selectedProvider;
-        if (!selectedProvider || !usageStats[selectedProvider]) {
-            document.getElementById('total-requests').textContent = '0';
-            document.getElementById('last-used').textContent = 'Never';
-            return;
+    updateUsageTable(usageStats) {
+        const tbody = document.getElementById('usage-table-body');
+        tbody.innerHTML = '';
+
+        for (const [provider, stats] of Object.entries(usageStats)) {
+            if (stats.requests > 0) {
+                // Add main provider row
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${provider}</td>
+                    <td>-</td>
+                    <td>${stats.requests}</td>
+                    <td>${stats.lastUsed ? new Date(stats.lastUsed).toLocaleString() : 'Never'}</td>
+                `;
+
+                // Add model-specific rows
+                if (stats.models) {
+                    for (const [model, modelStats] of Object.entries(stats.models)) {
+                        if (modelStats.requests > 0) {
+                            const modelRow = tbody.insertRow();
+                            modelRow.innerHTML = `
+                                <td style="padding-left: 20px;">↳ ${provider}</td>
+                                <td>${model}</td>
+                                <td>${modelStats.requests}</td>
+                                <td>${modelStats.lastUsed ? new Date(modelStats.lastUsed).toLocaleString() : 'Never'}</td>
+                            `;
+                        }
+                    }
+                }
+            }
         }
 
-        const stats = usageStats[selectedProvider];
-        document.getElementById('total-requests').textContent = stats.requests.toString();
-        
-        if (stats.lastUsed) {
-            const date = new Date(stats.lastUsed);
-            document.getElementById('last-used').textContent = date.toLocaleString();
-        } else {
-            document.getElementById('last-used').textContent = 'Never';
+        if (tbody.children.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #6c757d;">No usage data available</td></tr>';
         }
+    }
+
+    updateRequestLog(requestLog) {
+        const tbody = document.getElementById('log-table-body');
+        tbody.innerHTML = '';
+
+        requestLog.forEach(entry => {
+            const row = tbody.insertRow();
+            const timestamp = new Date(entry.timestamp).toLocaleString();
+            
+            row.innerHTML = `
+                <td>${timestamp}</td>
+                <td class="request-cell">${this.truncateText(entry.request, 100)}</td>
+                <td class="response-cell">${this.truncateText(entry.response, 100)}</td>
+            `;
+        });
+
+        if (requestLog.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #6c757d;">No request log available</td></tr>';
+        }
+    }
+
+    truncateText(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
     }
 
     showStatus(message, type = 'info') {

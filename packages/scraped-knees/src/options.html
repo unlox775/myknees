@@ -171,22 +171,41 @@
 
                 <div id="debug-section" class="debug-section" style="display: none;">
                     <h3>🔍 Debug Information</h3>
-                    <div id="debug-content" class="debug-content">
-                        <div class="debug-item">
-                            <span class="debug-label">Last API Request:</span>
-                            <span id="last-request">None</span>
-                        </div>
-                        <div class="debug-item">
-                            <span class="debug-label">Last API Response:</span>
-                            <span id="last-response">None</span>
-                        </div>
-                        <div class="debug-item">
-                            <span class="debug-label">Total Requests:</span>
-                            <span id="total-requests">0</span>
-                        </div>
-                        <div class="debug-item">
-                            <span class="debug-label">Last Used:</span>
-                            <span id="last-used">Never</span>
+                    
+                    <!-- Usage Statistics Table -->
+                    <div class="usage-table-section">
+                        <h4>📊 Usage Statistics</h4>
+                        <table id="usage-table" class="usage-table">
+                            <thead>
+                                <tr>
+                                    <th>Provider</th>
+                                    <th>Model</th>
+                                    <th>Total Requests</th>
+                                    <th>Last Used</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usage-table-body">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Request/Response Log -->
+                    <div class="log-section">
+                        <h4>📝 Request/Response Log (Last 50)</h4>
+                        <div id="log-container" class="log-container">
+                            <table id="log-table" class="log-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date/Time</th>
+                                        <th>Request</th>
+                                        <th>Response</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="log-table-body">
+                                    <!-- Populated by JavaScript -->
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
