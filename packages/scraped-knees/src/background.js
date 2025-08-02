@@ -33,7 +33,14 @@ class BackgroundService {
       settings: {
         autoStart: false,
         debugMode: false,
-        overlayOpacity: 0.3
+        overlayOpacity: 0.7,
+        aiProvider: 'none',
+        groqApiKey: '',
+        groqModel: 'llama3-8b-8192',
+        openrouterApiKey: '',
+        openrouterModel: 'anthropic/claude-3-haiku',
+        autoExtract: false,
+        saveTraining: true
       }
     };
 
@@ -72,6 +79,16 @@ class BackgroundService {
         case 'GET_SCRAPED_DATA':
           const data = await this.getScrapedData();
           sendResponse({ success: true, data });
+          break;
+
+        case 'GET_OPTIONS':
+          const options = await this.getOptions();
+          sendResponse({ success: true, data: options });
+          break;
+
+        case 'CALL_AI_API':
+          const aiResponse = await this.callAiApi(message.data);
+          sendResponse({ success: true, data: aiResponse });
           break;
 
         default:
@@ -146,6 +163,103 @@ class BackgroundService {
     // Inject content script if needed
     if (tab.url && tab.url.startsWith('http')) {
       console.log('Tab updated:', tabId, tab.url);
+    }
+  }
+
+  async getOptions() {
+    try {
+      const result = await chrome.storage.sync.get({
+        aiProvider: 'none',
+        groqApiKey: '',
+        groqModel: 'llama3-8b-8192',
+        openrouterApiKey: '',
+        openrouterModel: 'anthropic/claude-3-haiku',
+        autoExtract: false,
+        saveTraining: true,
+        debugMode: false,
+        overlayOpacity: 0.7
+      });
+      return result;
+    } catch (error) {
+      console.error('Error getting options:', error);
+      return {};
+    }
+  }
+
+  async callAiApi(requestData) {
+    try {
+      const options = await this.getOptions();
+      
+      if (options.aiProvider === 'none') {
+        throw new Error('No AI provider configured');
+      }
+
+      if (options.aiProvider === 'groq') {
+        return await this.callGroqApi(requestData, options);
+      } else if (options.aiProvider === 'openrouter') {
+        return await this.callOpenRouterApi(requestData, options);
+      } else {
+        throw new Error('Unknown AI provider');
+      }
+    } catch (error) {
+      console.error('Error calling AI API:', error);
+      throw error;
+    }
+  }
+
+  async callGroqApi(requestData, options) {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${options.groqApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: options.groqModel,
+        messages: requestData.messages,
+        max_tokens: requestData.maxTokens || 1000,
+        temperature: requestData.temperature || 0.7
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  }
+
+  async callOpenRouterApi(requestData, options) {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${options.openrouterApiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': chrome.runtime.getURL(''),
+        'X-Title': 'ScrapedKnees'
+      },
+      body: JSON.stringify({
+        model: options.openrouterModel,
+        messages: requestData.messages,
+        max_tokens: requestData.maxTokens || 1000,
+        temperature: requestData.temperature || 0.7
+      })
+    });
+
+    try {
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${data.error?.message || 'Unknown error'}`);
+      }
+      
+      return data;
+    } catch (error) {
+      if (error.name === 'SyntaxError') {
+        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+      }
+      throw error;
     }
   }
 }

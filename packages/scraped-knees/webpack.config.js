@@ -7,12 +7,13 @@ module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
   
   return {
-    entry: {
-      background: './src/background.js',
-      content: './src/content.js',
-      popup: './src/popup.js',
-      injected: './src/injected.js'
-    },
+      entry: {
+    background: './src/background.js',
+    content: './src/content.js',
+    popup: './src/popup.js',
+    injected: './src/injected.js',
+    options: './src/options.js'
+  },
     output: {
       path: path.resolve(__dirname, 'dist'),
       filename: '[name].js',
@@ -39,12 +40,17 @@ module.exports = (env, argv) => {
         }
       ]
     },
-    plugins: [
-      new HtmlWebpackPlugin({
-        template: './src/popup.html',
-        filename: 'popup.html',
-        chunks: ['popup']
-      }),
+               plugins: [
+             new HtmlWebpackPlugin({
+               template: './src/popup.html',
+               filename: 'popup.html',
+               chunks: ['popup']
+             }),
+             new HtmlWebpackPlugin({
+               template: './src/options.html',
+               filename: 'options.html',
+               chunks: ['options']
+             }),
       new MiniCssExtractPlugin({
         filename: '[name].css'
       }),

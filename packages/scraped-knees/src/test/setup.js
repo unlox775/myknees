@@ -111,8 +111,9 @@ afterEach(() => {
     }
   });
 
-  chrome.storage.local.get.mockClear();
-  chrome.storage.local.set.mockClear();
-  chrome.tabs.query.mockClear();
-  chrome.tabs.sendMessage.mockClear();
+  // Safely clear Chrome API mocks
+  if (chrome.storage?.local?.get) chrome.storage.local.get.mockClear();
+  if (chrome.storage?.local?.set) chrome.storage.local.set.mockClear();
+  if (chrome.tabs?.query) chrome.tabs.query.mockClear();
+  if (chrome.tabs?.sendMessage) chrome.tabs.sendMessage.mockClear();
 });

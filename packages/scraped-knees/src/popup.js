@@ -41,6 +41,11 @@ class PopupController {
       this.exportData();
     });
 
+    // Open options
+    document.getElementById('open-options').addEventListener('click', () => {
+      chrome.runtime.openOptionsPage();
+    });
+
     // Session list clicks
     document.getElementById('sessions-list').addEventListener('click', (event) => {
       const sessionItem = event.target.closest('.session-item');
