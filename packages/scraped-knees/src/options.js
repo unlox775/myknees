@@ -73,8 +73,12 @@ class OptionsManager {
   }
 
     togglePasswordVisibility(targetId) {
+        console.log('Toggling password visibility for:', targetId);
         const input = document.getElementById(targetId);
         const button = document.querySelector(`button[data-target="${targetId}"]`);
+        
+        console.log('Found input:', input);
+        console.log('Found button:', button);
         
         if (!input || !button) {
             console.error('Could not find input or button for:', targetId);
@@ -84,9 +88,11 @@ class OptionsManager {
         if (input.type === 'password') {
             input.type = 'text';
             button.textContent = '🙈';
+            console.log('Password now visible');
         } else {
             input.type = 'password';
             button.textContent = '👁️';
+            console.log('Password now hidden');
         }
     }
 

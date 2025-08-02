@@ -205,6 +205,7 @@ class BackgroundService {
   }
 
   async simpleTestConnection(provider, apiKey) {
+    console.log('simpleTestConnection called with:', { provider, apiKey: apiKey ? '***' : 'null' });
     try {
       let testUrl, headers, body;
       
@@ -259,12 +260,14 @@ class BackgroundService {
         return { success: false, error: 'Unknown provider' };
       }
 
+      console.log('Making API call to:', testUrl);
       const response = await fetch(testUrl, {
         method: 'POST',
         headers,
         body
       });
 
+      console.log('API response status:', response.status);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         let errorMessage = 'API error';
