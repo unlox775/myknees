@@ -36,7 +36,9 @@ help:
 # Monorepo commands
 install:
 	@echo "Installing dependencies for all packages..."
-	npm install
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make install; \
+	fi
 	@echo "✅ All dependencies installed"
 
 build:
@@ -168,20 +170,20 @@ shared-build:
 	@echo "This will be available when the shared package is set up"
 
 # Quick development commands
-quick-dev: install scraped-knees-dev
+quick-dev: scraped-knees-dev
 
-quick-build: install scraped-knees-build
+quick-build: scraped-knees-build
 
-quick-test: install scraped-knees-test
+quick-test: scraped-knees-test
 
 # Development workflow
-dev-full: install lint test build
+dev-full: lint test build
 	@echo "🎯 Full development workflow completed!"
 	@echo "📦 All packages built and tested"
 	@echo "✨ Ready for development"
 
 # Production readiness
-prod-check: install lint test build scraped-knees-package
+prod-check: lint test build scraped-knees-package
 	@echo "🚀 Production readiness check completed!"
 	@echo "✅ All checks passed"
 	@echo "📦 ScrapedKnees extension packaged"
