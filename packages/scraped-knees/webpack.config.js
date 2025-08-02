@@ -9,8 +9,8 @@ module.exports = (env, argv) => {
   return {
       entry: {
     background: './src/background.js',
-    content: './src/content.js',
-    popup: './src/popup.js',
+    content: ['./src/content.js', './src/content.css'],
+    popup: ['./src/popup.js', './src/popup.css'],
     injected: './src/injected.js',
     options: ['./src/options.js', './src/options.css']
   },
@@ -34,7 +34,7 @@ module.exports = (env, argv) => {
         {
           test: /\.css$/,
           use: [
-            isProduction ? MiniCssExtractPlugin.loader : 'style-loader',
+            MiniCssExtractPlugin.loader,
             'css-loader'
           ]
         }
