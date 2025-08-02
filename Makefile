@@ -1,175 +1,209 @@
-# AI Data Scraper Chrome Extension - Makefile
-# Provides simple commands for common development tasks
+# MyKnees Finance Application - Monorepo Makefile
+# Provides commands for managing the entire MyKnees ecosystem
 
-.PHONY: help install build dev test test-watch lint lint-fix clean package deploy check-deps
+.PHONY: help install build dev test lint clean status scraped-knees web-app backend shared
 
 # Default target
 help:
-	@echo "AI Data Scraper Chrome Extension - Available Commands:"
+	@echo "MyKnees Finance Application - Available Commands:"
 	@echo ""
-	@echo "Setup:"
-	@echo "  install     - Install dependencies"
-	@echo "  check-deps  - Check if dependencies are installed"
+	@echo "📦 Monorepo Commands:"
+	@echo "  install     - Install dependencies for all packages"
+	@echo "  build       - Build all packages"
+	@echo "  test        - Run tests for all packages"
+	@echo "  lint        - Lint all packages"
+	@echo "  clean       - Clean all packages"
+	@echo "  status      - Show status of all packages"
 	@echo ""
-	@echo "Development:"
-	@echo "  dev         - Start development mode with watch"
-	@echo "  build       - Build for production"
-	@echo "  clean       - Clean build artifacts"
+	@echo "🕷️  ScrapedKnees (Chrome Extension):"
+	@echo "  scraped-knees-dev     - Start ScrapedKnees development"
+	@echo "  scraped-knees-build   - Build ScrapedKnees extension"
+	@echo "  scraped-knees-test    - Test ScrapedKnees"
+	@echo "  scraped-knees-package - Package ScrapedKnees"
 	@echo ""
-	@echo "Testing:"
-	@echo "  test        - Run unit tests"
-	@echo "  test-watch  - Run tests in watch mode"
+	@echo "🌐 Web Application (Planned):"
+	@echo "  web-app-dev           - Start web app development (when ready)"
+	@echo "  web-app-build         - Build web app (when ready)"
 	@echo ""
-	@echo "Code Quality:"
-	@echo "  lint        - Check code quality"
-	@echo "  lint-fix    - Fix linting issues"
+	@echo "🔧 Backend Services (Planned):"
+	@echo "  backend-dev           - Start backend development (when ready)"
+	@echo "  backend-build         - Build backend (when ready)"
 	@echo ""
-	@echo "Deployment:"
-	@echo "  package     - Create extension.zip for distribution"
-	@echo "  deploy      - Full deployment pipeline (build, test, package)"
-	@echo ""
-	@echo "Chrome Extension:"
-	@echo "  load-chrome - Instructions for loading extension in Chrome"
-	@echo "  reload-chrome - Instructions for reloading extension"
+	@echo "📚 Shared Libraries (Planned):"
+	@echo "  shared-build          - Build shared libraries (when ready)"
 	@echo ""
 
-# Setup commands
+# Monorepo commands
 install:
-	@echo "Installing dependencies..."
+	@echo "Installing dependencies for all packages..."
 	npm install
-	@echo "✅ Dependencies installed successfully"
+	@echo "✅ All dependencies installed"
 
-check-deps:
-	@echo "Checking dependencies..."
-	@if [ ! -d "node_modules" ]; then \
-		echo "❌ Dependencies not found. Run 'make install' first."; \
-		exit 1; \
+build:
+	@echo "Building all packages..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make build; \
 	fi
-	@echo "✅ Dependencies found"
+	@echo "✅ All packages built"
 
-# Development commands
-dev: check-deps
-	@echo "Starting development mode..."
-	@echo "📝 Watching for changes..."
-	@echo "🔄 Auto-rebuilding on file changes..."
-	@echo "⏹️  Press Ctrl+C to stop"
-	npm run dev
+test:
+	@echo "Running tests for all packages..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make test; \
+	fi
+	@echo "✅ All tests completed"
 
-build: check-deps
-	@echo "Building for production..."
-	npm run build
-	@echo "✅ Build completed successfully"
-	@echo "📁 Extension files created in dist/"
+lint:
+	@echo "Linting all packages..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make lint; \
+	fi
+	@echo "✅ All packages linted"
 
 clean:
-	@echo "Cleaning build artifacts..."
-	rm -rf dist/
-	rm -f extension.zip
-	@echo "✅ Clean completed"
+	@echo "Cleaning all packages..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make clean; \
+	fi
+	@echo "✅ All packages cleaned"
 
-# Testing commands
-test: check-deps
-	@echo "Running unit tests..."
-	npm test
-	@echo "✅ Tests completed"
-
-test-watch: check-deps
-	@echo "Running tests in watch mode..."
-	@echo "🔄 Tests will re-run on file changes"
-	@echo "⏹️  Press Ctrl+C to stop"
-	npm run test:watch
-
-# Code quality commands
-lint: check-deps
-	@echo "Checking code quality..."
-	npm run lint
-	@echo "✅ Linting completed"
-
-lint-fix: check-deps
-	@echo "Fixing linting issues..."
-	npm run lint:fix
-	@echo "✅ Linting issues fixed"
-
-# Deployment commands
-package: build
-	@echo "Creating extension package..."
-	npm run package
-	@echo "✅ Extension packaged as extension.zip"
-	@echo "📦 Ready for distribution"
-
-deploy: clean lint test build package
-	@echo "🎉 Deployment pipeline completed successfully!"
-	@echo "📦 Extension ready: extension.zip"
-	@echo "📁 Build files: dist/"
-
-# Chrome extension specific commands
-load-chrome:
-	@echo "📋 Instructions to load extension in Chrome:"
-	@echo "1. Open Chrome and go to chrome://extensions/"
-	@echo "2. Enable 'Developer mode' (toggle in top right)"
-	@echo "3. Click 'Load unpacked'"
-	@echo "4. Select the 'dist' folder from this project"
+status:
+	@echo "📊 MyKnees Monorepo Status"
+	@echo "=========================="
 	@echo ""
-	@echo "💡 Make sure to run 'make build' first!"
-
-reload-chrome:
-	@echo "📋 Instructions to reload extension:"
-	@echo "1. Go to chrome://extensions/"
-	@echo "2. Find 'AI Data Scraper' extension"
-	@echo "3. Click the refresh icon 🔄"
-	@echo "4. Or press Ctrl+R on the extensions page"
+	@echo "📦 Packages:"
+	@if [ -d "packages/scraped-knees" ]; then \
+		echo "  ✅ scraped-knees/ - Chrome extension (Active)"; \
+	else \
+		echo "  ❌ scraped-knees/ - Not found"; \
+	fi
+	@if [ -d "packages/web-app" ]; then \
+		echo "  🚧 web-app/ - Web application (Planned)"; \
+	else \
+		echo "  ❌ web-app/ - Not found"; \
+	fi
+	@if [ -d "packages/backend" ]; then \
+		echo "  🚧 backend/ - Backend services (Planned)"; \
+	else \
+		echo "  ❌ backend/ - Not found"; \
+	fi
+	@if [ -d "packages/shared" ]; then \
+		echo "  🚧 shared/ - Shared libraries (Planned)"; \
+	else \
+		echo "  ❌ shared/ - Not found"; \
+	fi
 	@echo ""
-	@echo "💡 Run 'make build' first if you made changes!"
+	@echo "🔧 Quick Commands:"
+	@echo "  make scraped-knees-dev    - Start ScrapedKnees development"
+	@echo "  make scraped-knees-build  - Build ScrapedKnees extension"
+	@echo "  make status               - Check this status again"
 
-# Quick development workflow
-quick-dev: install dev
+# ScrapedKnees commands
+scraped-knees-dev:
+	@echo "Starting ScrapedKnees development..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make dev; \
+	else \
+		echo "❌ ScrapedKnees package not found"; \
+		exit 1; \
+	fi
 
-quick-test: install test
+scraped-knees-build:
+	@echo "Building ScrapedKnees extension..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make build; \
+	else \
+		echo "❌ ScrapedKnees package not found"; \
+		exit 1; \
+	fi
 
-quick-build: install build
+scraped-knees-test:
+	@echo "Testing ScrapedKnees..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make test; \
+	else \
+		echo "❌ ScrapedKnees package not found"; \
+		exit 1; \
+	fi
 
-# Development workflow with all checks
+scraped-knees-package:
+	@echo "Packaging ScrapedKnees extension..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make package; \
+	else \
+		echo "❌ ScrapedKnees package not found"; \
+		exit 1; \
+	fi
+
+scraped-knees-status:
+	@echo "Checking ScrapedKnees status..."
+	@if [ -d "packages/scraped-knees" ]; then \
+		cd packages/scraped-knees && make status; \
+	else \
+		echo "❌ ScrapedKnees package not found"; \
+		exit 1; \
+	fi
+
+# Web application commands (placeholder)
+web-app-dev:
+	@echo "🚧 Web application development not yet implemented"
+	@echo "This will be available when the web-app package is set up"
+
+web-app-build:
+	@echo "🚧 Web application build not yet implemented"
+	@echo "This will be available when the web-app package is set up"
+
+# Backend commands (placeholder)
+backend-dev:
+	@echo "🚧 Backend development not yet implemented"
+	@echo "This will be available when the backend package is set up"
+
+backend-build:
+	@echo "🚧 Backend build not yet implemented"
+	@echo "This will be available when the backend package is set up"
+
+# Shared libraries commands (placeholder)
+shared-build:
+	@echo "🚧 Shared libraries build not yet implemented"
+	@echo "This will be available when the shared package is set up"
+
+# Quick development commands
+quick-dev: install scraped-knees-dev
+
+quick-build: install scraped-knees-build
+
+quick-test: install scraped-knees-test
+
+# Development workflow
 dev-full: install lint test build
-	@echo "🎯 Development environment ready!"
-	@echo "📁 Extension built in dist/"
-	@echo "🧪 Tests passed"
-	@echo "✨ Code quality checks passed"
+	@echo "🎯 Full development workflow completed!"
+	@echo "📦 All packages built and tested"
+	@echo "✨ Ready for development"
 
-# Production readiness check
-prod-check: install lint test build package
+# Production readiness
+prod-check: install lint test build scraped-knees-package
 	@echo "🚀 Production readiness check completed!"
 	@echo "✅ All checks passed"
-	@echo "📦 Extension packaged: extension.zip"
-	@echo "📁 Build files: dist/"
+	@echo "📦 ScrapedKnees extension packaged"
+	@echo "📁 All packages built"
 
-# Show project status
-status:
-	@echo "📊 Project Status:"
+# Show monorepo info
+info:
+	@echo "MyKnees Finance Application"
+	@echo "=========================="
 	@echo ""
-	@if [ -d "node_modules" ]; then \
-		echo "✅ Dependencies: Installed"; \
-	else \
-		echo "❌ Dependencies: Not installed (run 'make install')"; \
-	fi
-	@if [ -d "dist" ]; then \
-		echo "✅ Build: Available (dist/)"; \
-	else \
-		echo "❌ Build: Not available (run 'make build')"; \
-	fi
-	@if [ -f "extension.zip" ]; then \
-		echo "✅ Package: Available (extension.zip)"; \
-	else \
-		echo "❌ Package: Not available (run 'make package')"; \
-	fi
+	@echo "🎯 Vision: Where did my money go?"
+	@echo "MyKnees helps you answer this question with AI-powered insights."
 	@echo ""
-	@echo "📋 Next steps:"
-	@if [ ! -d "node_modules" ]; then \
-		echo "  make install"; \
-	fi
-	@if [ ! -d "dist" ]; then \
-		echo "  make build"; \
-	fi
-	@if [ ! -f "extension.zip" ]; then \
-		echo "  make package"; \
-	fi
-	@echo "  make load-chrome"
+	@echo "📦 Current Packages:"
+	@echo "  🕷️  ScrapedKnees - AI-powered web data scraper (Active)"
+	@echo "  🌐 Web Application - Frontend interface (Planned)"
+	@echo "  🔧 Backend Services - API and data processing (Planned)"
+	@echo "  📚 Shared Libraries - Common utilities (Planned)"
+	@echo ""
+	@echo "🔗 Links:"
+	@echo "  📖 Main README: README.md"
+	@echo "  🕷️  ScrapedKnees: packages/scraped-knees/README.md"
+	@echo "  🌐 Web App: packages/web-app/README.md"
+	@echo "  🔧 Backend: packages/backend/README.md"
+	@echo "  📚 Shared: packages/shared/README.md"
