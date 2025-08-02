@@ -136,20 +136,11 @@ class AIManager {
             return { success: false, error: readyCheck.error };
         }
 
-        const provider = this.providers[readyCheck.provider];
-        const apiKey = this.settings.apiKeys[readyCheck.provider];
-
-        try {
-            const result = await provider.testConnection(apiKey);
-            
-            if (result.success) {
-                await this.usageStorage.updateUsageStats(readyCheck.provider, 1);
-            }
-            
-            return result;
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
+        // Use the main sendPrompt method to ensure proper logging
+        const testPrompt = 'Hello! This is a connection test from ScrapedKnees.';
+        const result = await this.sendPrompt(testPrompt, { test: true });
+        
+        return result;
     }
 
     /**

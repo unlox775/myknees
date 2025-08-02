@@ -33,8 +33,12 @@ class OptionsManager {
     });
 
     // Password toggle buttons
-    document.querySelectorAll('.toggle-password').forEach(button => {
+    const toggleButtons = document.querySelectorAll('.toggle-password');
+    console.log('Found toggle buttons:', toggleButtons.length);
+    toggleButtons.forEach(button => {
+      console.log('Adding click listener to button:', button.dataset.target);
       button.addEventListener('click', (e) => {
+        console.log('Button clicked:', e.target.dataset.target);
         this.togglePasswordVisibility(e.target.dataset.target);
       });
     });

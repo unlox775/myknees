@@ -201,29 +201,40 @@ describe('AIManager', () => {
     test('should test connection successfully', async () => {
       aiManager.settings = {
         selectedProvider: 'openai',
-        apiKeys: { openai: 'test-key' }
+        apiKeys: { openai: 'test-key' },
+        selectedModels: { openai: 'gpt-4o' }
       };
 
-      mockOpenAIProvider.testConnection.mockResolvedValue({ success: true });
+      mockOpenAIProvider.sendPrompt.mockResolvedValue({ 
+        success: true, 
+        response: 'Test response' 
+      });
+      mockUsageStorage.logRequest.mockResolvedValue();
       mockUsageStorage.updateUsageStats.mockResolvedValue();
 
       const result = await aiManager.testConnection();
 
-      expect(result).toEqual({ success: true });
-      expect(mockOpenAIProvider.testConnection).toHaveBeenCalledWith('test-key');
-      expect(mockUsageStorage.updateUsageStats).toHaveBeenCalledWith('openai', 1);
+      expect(result).toEqual({ 
+        success: true, 
+        response: 'Test response' 
+      });
+      expect(mockOpenAIProvider.sendPrompt).toHaveBeenCalledWith(
+        'Hello! This is a connection test from ScrapedKnees.',
+        { test: true },
+        'test-key',
+        'gpt-4o'
+      );
     });
 
     test('should test connection with error', async () => {
       aiManager.settings = {
         selectedProvider: 'openai',
-        apiKeys: { openai: 'test-key' }
+        apiKeys: { openai: 'test-key' },
+        selectedModels: { openai: 'gpt-4o' }
       };
 
-      mockOpenAIProvider.testConnection.mockResolvedValue({ 
-        success: false, 
-        error: 'Invalid API key' 
-      });
+      mockOpenAIProvider.sendPrompt.mockRejectedValue(new Error('Invalid API key'));
+      mockUsageStorage.logRequest.mockResolvedValue();
 
       const result = await aiManager.testConnection();
 
