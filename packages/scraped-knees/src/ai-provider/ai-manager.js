@@ -2,8 +2,8 @@ const { OpenAIProvider } = require('./providers/openai-provider');
 const { GroqProvider } = require('./providers/groq-provider');
 const { OpenRouterProvider } = require('./providers/openrouter-provider');
 const { AnthropicProvider } = require('./providers/anthropic-provider');
-const { SettingsStorage } = require('../storage/settings-storage');
-const { UsageStorage } = require('../storage/usage-storage');
+const { SettingsStorage } = require('./storage/settings-storage');
+const { UsageStorage } = require('./storage/usage-storage');
 
 /**
  * AI Manager Service

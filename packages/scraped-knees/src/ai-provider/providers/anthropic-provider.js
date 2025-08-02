@@ -1,4 +1,4 @@
-const { AIProvider } = require('../../../interfaces/ai-provider');
+const { AIProvider } = require('../interfaces/ai-provider');
 
 /**
  * Anthropic Provider Implementation

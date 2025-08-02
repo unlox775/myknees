@@ -8,10 +8,10 @@ module.exports = (env, argv) => {
   
   return {
       entry: {
-    background: './src/services/background.js',
+    background: './src/background.js',
     content: ['./src/ui/content/content.js', './src/ui/content/content.css'],
     popup: ['./src/ui/popup/popup.js', './src/ui/popup/popup.css'],
-    injected: './src/services/injected.js',
+    injected: './src/injected.js',
     options: ['./src/ui/options/options.js', './src/ui/options/options.css']
   },
     output: {
