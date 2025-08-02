@@ -159,12 +159,7 @@ class OptionsManager {
             await chrome.storage.sync.set(newOptions);
             this.options = newOptions;
 
-            this.showStatus('Options saved successfully!', 'success');
-            
-            // Test API connection if configured
-            if (newOptions.aiProvider !== 'none') {
-                await this.testApiConnection(newOptions);
-            }
+                        this.showStatus('Options saved successfully!', 'success');
 
         } catch (error) {
             console.error('Error saving options:', error);
@@ -175,84 +170,7 @@ class OptionsManager {
         }
     }
 
-    async testApiConnection(options) {
-        try {
-            this.showStatus('Testing API connection...', 'info');
-            
-            let testResult = false;
-            
-            if (options.aiProvider === 'groq') {
-                testResult = await this.testGroqApi(options.groqApiKey, options.groqModel);
-            } else if (options.aiProvider === 'openrouter') {
-                testResult = await this.testOpenRouterApi(options.openrouterApiKey, options.openrouterModel);
-            }
-
-            if (testResult) {
-                this.showStatus('API connection successful! AI features are now enabled.', 'success');
-            } else {
-                this.showStatus('API connection failed. Please check your API key and try again.', 'error');
-            }
-        } catch (error) {
-            console.error('API test error:', error);
-            this.showStatus('API connection test failed. Please check your configuration.', 'error');
-        }
-    }
-
-    async testGroqApi(apiKey, model) {
-        try {
-            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        {
-                            role: 'user',
-                            content: 'Hello! This is a test message from ScrapedKnees.'
-                        }
-                    ],
-                    max_tokens: 10
-                })
-            });
-
-            return response.ok;
-        } catch (error) {
-            console.error('Groq API test error:', error);
-            return false;
-        }
-    }
-
-    async testOpenRouterApi(apiKey, model) {
-        try {
-            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': chrome.runtime.getURL(''),
-                    'X-Title': 'ScrapedKnees'
-                },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        {
-                            role: 'user',
-                            content: 'Hello! This is a test message from ScrapedKnees.'
-                        }
-                    ],
-                    max_tokens: 10
-                })
-            });
-
-            return response.ok;
-        } catch (error) {
-            console.error('OpenRouter API test error:', error);
-            return false;
-        }
-    }
+    
 
     async resetOptions() {
         if (confirm('Are you sure you want to reset all options to their default values?')) {

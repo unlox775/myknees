@@ -86,11 +86,6 @@ class BackgroundService {
           sendResponse({ success: true, data: options });
           break;
 
-        case 'CALL_AI_API':
-          const aiResponse = await this.callAiApi(message.data);
-          sendResponse({ success: true, data: aiResponse });
-          break;
-
         default:
           console.warn('Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -183,83 +178,6 @@ class BackgroundService {
     } catch (error) {
       console.error('Error getting options:', error);
       return {};
-    }
-  }
-
-  async callAiApi(requestData) {
-    try {
-      const options = await this.getOptions();
-      
-      if (options.aiProvider === 'none') {
-        throw new Error('No AI provider configured');
-      }
-
-      if (options.aiProvider === 'groq') {
-        return await this.callGroqApi(requestData, options);
-      } else if (options.aiProvider === 'openrouter') {
-        return await this.callOpenRouterApi(requestData, options);
-      } else {
-        throw new Error('Unknown AI provider');
-      }
-    } catch (error) {
-      console.error('Error calling AI API:', error);
-      throw error;
-    }
-  }
-
-  async callGroqApi(requestData, options) {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${options.groqApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: options.groqModel,
-        messages: requestData.messages,
-        max_tokens: requestData.maxTokens || 1000,
-        temperature: requestData.temperature || 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Groq API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data;
-  }
-
-  async callOpenRouterApi(requestData, options) {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${options.openrouterApiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': chrome.runtime.getURL(''),
-        'X-Title': 'ScrapedKnees'
-      },
-      body: JSON.stringify({
-        model: options.openrouterModel,
-        messages: requestData.messages,
-        max_tokens: requestData.maxTokens || 1000,
-        temperature: requestData.temperature || 0.7
-      })
-    });
-
-    try {
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${data.error?.message || 'Unknown error'}`);
-      }
-      
-      return data;
-    } catch (error) {
-      if (error.name === 'SyntaxError') {
-        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
-      }
-      throw error;
     }
   }
 }

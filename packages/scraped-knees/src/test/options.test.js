@@ -66,62 +66,24 @@ describe('Options Page Functions', () => {
     }
   });
 
-  describe('API Testing Functions', () => {
-    test('should test Groq API successfully', async () => {
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ choices: [{ message: { content: 'Test response' } }] })
-      });
+  describe('Settings Management', () => {
+    test('should save and load settings correctly', async () => {
+      const testSettings = {
+        aiProvider: 'groq',
+        groqApiKey: 'test-key',
+        overlayOpacity: 0.8
+      };
 
-      const result = await testGroqApi('test-key', 'llama3-8b-8192');
-      expect(result).toBe(true);
-      expect(fetch).toHaveBeenCalledWith('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer test-key',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'llama3-8b-8192',
-          messages: [{ role: 'user', content: 'Hello! This is a test message from ScrapedKnees.' }],
-          max_tokens: 10
-        })
-      });
-    });
+      mockChrome.storage.sync.set.mockResolvedValue();
+      mockChrome.storage.sync.get.mockResolvedValue(testSettings);
 
-    test('should test OpenRouter API successfully', async () => {
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ choices: [{ message: { content: 'Test response' } }] })
-      });
+      // Test saving settings
+      await saveSettings(testSettings);
+      expect(mockChrome.storage.sync.set).toHaveBeenCalledWith(testSettings);
 
-      const result = await testOpenRouterApi('test-key', 'anthropic/claude-3-haiku');
-      expect(result).toBe(true);
-      expect(fetch).toHaveBeenCalledWith('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer test-key',
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'chrome-extension://test-id/',
-          'X-Title': 'ScrapedKnees'
-        },
-        body: JSON.stringify({
-          model: 'anthropic/claude-3-haiku',
-          messages: [{ role: 'user', content: 'Hello! This is a test message from ScrapedKnees.' }],
-          max_tokens: 10
-        })
-      });
-    });
-
-    test('should handle API test failures', async () => {
-      global.fetch.mockResolvedValue({
-        ok: false,
-        status: 401,
-        statusText: 'Unauthorized'
-      });
-
-      const result = await testGroqApi('invalid-key', 'llama3-8b-8192');
-      expect(result).toBe(false);
+      // Test loading settings
+      const loadedSettings = await loadSettings();
+      expect(loadedSettings).toEqual(testSettings);
     });
   });
 
@@ -202,58 +164,32 @@ describe('Options Page Functions', () => {
   });
 });
 
-// Helper functions for testing (extracted from the OptionsManager class)
-async function testGroqApi(apiKey, model) {
+// Helper functions for testing
+async function saveSettings(settings) {
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          {
-            role: 'user',
-            content: 'Hello! This is a test message from ScrapedKnees.'
-          }
-        ],
-        max_tokens: 10
-      })
-    });
-
-    return response.ok;
+    await chrome.storage.sync.set(settings);
   } catch (error) {
-    return false;
+    console.error('Error saving settings:', error);
   }
 }
 
-async function testOpenRouterApi(apiKey, model) {
+async function loadSettings() {
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': chrome.runtime.getURL(''),
-        'X-Title': 'ScrapedKnees'
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          {
-            role: 'user',
-            content: 'Hello! This is a test message from ScrapedKnees.'
-          }
-        ],
-        max_tokens: 10
-      })
+    const result = await chrome.storage.sync.get({
+      aiProvider: 'none',
+      groqApiKey: '',
+      groqModel: 'llama3-8b-8192',
+      openrouterApiKey: '',
+      openrouterModel: 'anthropic/claude-3-haiku',
+      autoExtract: false,
+      saveTraining: true,
+      debugMode: false,
+      overlayOpacity: 0.7
     });
-
-    return response.ok;
+    return result;
   } catch (error) {
-    return false;
+    console.error('Error loading settings:', error);
+    return {};
   }
 }
 
