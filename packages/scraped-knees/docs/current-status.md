@@ -76,42 +76,39 @@ This document summarizes what's currently implemented in ScrapedKnees as of the 
 
 ## 🏗️ Architecture
 
-### Current Structure
-```
-scraped-knees/
-├── src/
-│   ├── background.js          # Extension lifecycle and messaging
-│   ├── content.js             # Page interaction and training
-│   ├── popup.js               # Popup UI logic
-│   ├── popup.html             # Popup UI template
-│   ├── options.js             # Options page logic
-│   ├── options.html           # Options page template
-│   ├── options.css            # Options page styles
-│   ├── content.css            # Content script styles
-│   ├── injected.js            # DOM manipulation and extraction
-│   ├── ai-manager.js          # AI service management
-│   ├── ai-manager/            # AI provider implementations
-│   │   ├── providers/         # Individual AI providers
-│   │   ├── interfaces/        # AI service interfaces
-│   │   └── storage/           # AI-related storage
-│   └── test/                  # Unit tests
-├── dist/                      # Built extension files
-├── docs/
-│   ├── current-status.md      # This document
-│   ├── ai-manager.md          # AI manager documentation
-│   ├── data-storage.md        # Data storage documentation
-│   └── future-work/           # Design documents for future features
-├── manifest.json              # Extension configuration
-├── package.json               # Dependencies and scripts
-├── webpack.config.js          # Build configuration
-├── Makefile                   # Development commands
-└── README.md                  # Documentation
+### Component-Based Structure
+The extension follows a component-based architecture where each major feature is self-contained and communicates through well-defined interfaces. This pattern allows for independent development, testing, and maintenance of each component.
+
+**Key Pattern**: Each component has its own directory or file with a clear responsibility and minimal dependencies on other components.
+
+**Example**: The AI Manager (`src/ai-manager/`) is completely self-contained:
+- `ai-manager.js` - Main service interface
+- `providers/` - Individual AI provider implementations
+- `interfaces/` - Shared interfaces and types
+- `storage/` - AI-specific storage utilities
+
+This isolation means the AI Manager can be tested independently, swapped out entirely, or enhanced without affecting other parts of the system.
+
+### Extension Script Separation
+Following Chrome extension best practices, the code is separated into distinct script types with clear boundaries:
+
+**Background Script** (`background.js`): Handles extension lifecycle, message routing, and storage operations. Acts as the central coordinator.
+
+**Content Script** (`content.js`): Manages page interaction, training mode, and visual feedback. Isolated from the page's JavaScript context.
+
+**Injected Script** (`injected.js`): Performs DOM manipulation and data extraction. Runs in the page context for direct DOM access.
+
+**Popup/Options Scripts**: Handle UI interactions and user configuration. Communicate with background script for data operations.
+
+**Why This Pattern**: This separation provides security (content scripts can't access page variables), performance (scripts load only when needed), and maintainability (clear boundaries between concerns).
+
+### Service Layer Pattern
+The AI Manager demonstrates a service layer pattern where complex functionality is abstracted behind a simple interface:
+
+```javascript
+// Simple interface for complex functionality
+const aiManager = new AIManager();
+const response = await aiManager.callAI(messages, options);
 ```
 
-### Component Interfaces
-- **Background Script**: Message handling, storage management
-- **Content Script**: Page interaction, training mode, visual feedback
-- **Popup**: User interface, session management, data export
-- **Options Page**: Settings management, API key configuration
-- **Injected Script**: DOM manipulation, data extraction
-- **AI Manager**: Unified AI service interface
+**Why This Pattern**: Services hide implementation details, making the rest of the extension simpler and more testable. The AI Manager could be completely rewritten without changing how other components use it.
