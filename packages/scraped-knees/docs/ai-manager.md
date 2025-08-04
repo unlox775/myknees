@@ -113,6 +113,38 @@ The AI Manager integrates with the extension's options page to provide:
     anthropic: 'claude-3-sonnet'
   }
 }
+
+// Debug logs and usage data stored in Chrome storage local
+{
+  usageStats: {
+    groq: {
+      requests: 15,
+      tokens: 2500,
+      lastUsed: 1640995200000,
+      models: {
+        'llama3-8b-8192': {
+          requests: 10,
+          lastUsed: 1640995200000
+        }
+      }
+    }
+  },
+  requestLog: [
+    {
+      timestamp: 1640995200000,
+      provider: 'groq',
+      model: 'llama3-8b-8192',
+      request: '{"prompt": "Hello", "context": {}}',
+      response: '{"success": true, "response": "Hi there!"}',
+      success: true
+    }
+  ],
+  aiStatus: {
+    isReady: true,
+    provider: 'groq',
+    lastChecked: 1640995200000
+  }
+}
 ```
 
 ## Error Handling
@@ -184,6 +216,38 @@ The AI Manager integrates with the extension's options page to provide:
 - User consent for AI features
 - Data anonymization where possible
 - Clear privacy policies
+
+## Debug Logs and Usage Tracking
+
+### Debug Log Persistence
+**Debug logs are persistent** and stored in Chrome's local storage. They are **NOT cleared on page refresh** and will persist until:
+- The extension is uninstalled
+- The browser data is cleared
+- The logs are manually cleared through the debug interface
+
+### What's Logged
+- **Request/Response Pairs**: Complete request and response data for each AI call
+- **Usage Statistics**: Per-provider and per-model usage counts
+- **AI Status**: Connection status and last check timestamps
+- **Error Information**: Failed requests with error details
+
+### Log Management
+- **Automatic Rotation**: Only the last 50 request log entries are kept
+- **Storage Location**: Chrome Storage Local (persistent across sessions)
+- **Data Structure**: JSON format for easy parsing and debugging
+- **Privacy**: No sensitive data (like API keys) is logged
+
+### Accessing Debug Data
+```javascript
+// Get usage statistics
+const usageStats = await aiManager.getUsageStats();
+
+// Get request log
+const requestLog = await aiManager.getRequestLog();
+
+// Get cached AI status
+const status = await aiManager.getCachedStatus();
+```
 
 ## Performance
 
