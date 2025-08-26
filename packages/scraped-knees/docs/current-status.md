@@ -19,17 +19,12 @@ This document summarizes what's currently implemented in ScrapedKnees as of the 
 - **Data Management**: Export/import functionality and data statistics
 - **Validation**: Basic form validation and error handling
 
-### 3. Basic Training Infrastructure
-- **Visual Training Mode**: Element selection with overlays
-- **Training Sessions**: Basic session management and storage
-- **Keyboard Shortcuts**: Ctrl+Shift+S for training, Ctrl+Click for exclusions
-- **UI Components**: Training panel and visual feedback
-
-### 4. Data Extraction Infrastructure
-- **DOM Manipulation**: Basic element selection and data extraction
-- **Pagination Support**: Framework for handling paginated content
-- **Export Functionality**: CSV export of extracted data
-- **Data Validation**: Basic data structure validation
+### 3. AI Manager
+- **Provider Management**: Support for multiple AI providers (Groq, OpenRouter, OpenAI, Anthropic)
+- **Unified Interface**: Consistent API for all AI providers
+- **Settings Integration**: API key management and provider selection
+- **Error Handling**: Robust error handling and fallback mechanisms
+- **Cost Tracking**: Basic cost estimation and usage tracking
 
 ## 🚧 Partially Implemented
 
@@ -41,19 +36,31 @@ This document summarizes what's currently implemented in ScrapedKnees as of the 
 - **Status**: Basic extraction logic, needs enhancement
 - **Missing**: Advanced pattern recognition, edge case handling
 
-## 📋 Planned (Not Implemented)
+## 📋 Proposed to be Implemented (Not Reviewed by Human Yet)
 
-### 1. AI Integration Engine
-- **Status**: Design documented, not implemented
-- **Location**: `docs/future-work/ai-integration.md`
+### 1. Enhanced Training Infrastructure
+- **Visual Training Mode**: Element selection with overlays
+- **Training Sessions**: Session management and storage
+- **Keyboard Shortcuts**: Ctrl+Shift+S for training, Ctrl+Click for exclusions
+- **UI Components**: Training panel and visual feedback
 
-### 2. Storage Engine
-- **Status**: Design documented, not implemented
-- **Location**: `docs/future-work/data-storage.md`
+### 2. Enhanced Data Extraction Infrastructure
+- **DOM Manipulation**: Element selection and data extraction
+- **Pagination Support**: Framework for handling paginated content
+- **Export Functionality**: CSV export of extracted data
+- **Data Validation**: Data structure validation
 
-### 3. Analytics Engine
-- **Status**: Design documented, not implemented
-- **Location**: `docs/future-work/architecture-overview.md`
+### 3. Storage Engine
+- **Training Session Storage**: Structured storage of training configurations
+- **Scraped Data Storage**: Store extracted data with metadata
+- **User Preferences Storage**: Cross-device sync capabilities
+- **Analytics Storage**: Usage tracking and performance monitoring
+
+### 4. Analytics Engine
+- **Usage Statistics**: Track user behavior and feature usage
+- **Performance Metrics**: Monitor extension performance
+- **Error Tracking**: Capture and report errors
+- **User Behavior Analysis**: Understand how users interact with the extension
 
 ## 🧪 Testing Status
 
@@ -69,99 +76,39 @@ This document summarizes what's currently implemented in ScrapedKnees as of the 
 
 ## 🏗️ Architecture
 
-### Current Structure
-```
-scraped-knees/
-├── src/
-│   ├── background.js          # Extension lifecycle and messaging
-│   ├── content.js             # Page interaction and training
-│   ├── popup.js               # Popup UI logic
-│   ├── popup.html             # Popup UI template
-│   ├── options.js             # Options page logic
-│   ├── options.html           # Options page template
-│   ├── options.css            # Options page styles
-│   ├── content.css            # Content script styles
-│   ├── injected.js            # DOM manipulation and extraction
-│   └── test/                  # Unit tests
-├── dist/                      # Built extension files
-├── docs/
-│   └── future-work/           # Design documents for future features
-├── manifest.json              # Extension configuration
-├── package.json               # Dependencies and scripts
-├── webpack.config.js          # Build configuration
-├── Makefile                   # Development commands
-└── README.md                  # Documentation
-```
+### Component-Based Structure
+The extension follows a component-based architecture where each major feature is self-contained and communicates through well-defined interfaces. This pattern allows for independent development, testing, and maintenance of each component.
 
-### Component Interfaces
-- **Background Script**: Message handling, storage management
-- **Content Script**: Page interaction, training mode, visual feedback
-- **Popup**: User interface, session management, data export
-- **Options Page**: Settings management, API key configuration
-- **Injected Script**: DOM manipulation, data extraction
+**Key Pattern**: Each component has its own directory or file with a clear responsibility and minimal dependencies on other components.
 
-## 🚀 Development Workflow
+**Example**: The AI Manager (`src/ai-manager/`) is completely self-contained:
+- `ai-manager.js` - Main service interface
+- `providers/` - Individual AI provider implementations
+- `interfaces/` - Shared interfaces and types
+- `storage/` - AI-specific storage utilities
 
-### Available Commands
-```bash
-make help              # Show all available commands
-make install           # Install dependencies
-make build             # Build for production
-make dev               # Development mode with watch
-make test              # Run unit tests
-make lint              # Check code quality
-make package           # Create extension.zip
-make status            # Check project status
+This isolation means the AI Manager can be tested independently, swapped out entirely, or enhanced without affecting other parts of the system.
+
+### Extension Script Separation
+Following Chrome extension best practices, the code is separated into distinct script types with clear boundaries:
+
+**Background Script** (`background.js`): Handles extension lifecycle, message routing, and storage operations. Acts as the central coordinator.
+
+**Content Script** (`content.js`): Manages page interaction, training mode, and visual feedback. Isolated from the page's JavaScript context.
+
+**Injected Script** (`injected.js`): Performs DOM manipulation and data extraction. Runs in the page context for direct DOM access.
+
+**Popup/Options Scripts**: Handle UI interactions and user configuration. Communicate with background script for data operations.
+
+**Why This Pattern**: This separation provides security (content scripts can't access page variables), performance (scripts load only when needed), and maintainability (clear boundaries between concerns).
+
+### Service Layer Pattern
+The AI Manager demonstrates a service layer pattern where complex functionality is abstracted behind a simple interface:
+
+```javascript
+// Simple interface for complex functionality
+const aiManager = new AIManager();
+const response = await aiManager.callAI(messages, options);
 ```
 
-### Testing Workflow
-1. **Unit Tests**: `make test` - Tests individual components
-2. **Build Test**: `make build` - Ensures extension builds correctly
-3. **Manual Testing**: Load extension in Chrome for UI testing
-
-## 📋 Next Steps
-
-### Immediate (Ready for Implementation)
-1. **Enhance Training Session Engine**: Improve session management and validation
-2. **Improve Data Extraction**: Add better pattern recognition and edge case handling
-3. **Add Integration Tests**: End-to-end testing of complete workflows
-
-### Future (Design Ready)
-1. **AI Integration**: Implement AI-powered features (design in `docs/future-work/ai-integration.md`)
-2. **Advanced Storage**: Implement comprehensive data storage (design in `docs/future-work/data-storage.md`)
-3. **Analytics**: Add usage tracking and performance monitoring
-
-## 🔧 Technical Debt
-
-### Minor Issues
-- Some hardcoded values that could be configurable
-- Limited error handling in some areas
-- Basic validation that could be enhanced
-
-### No Critical Issues
-- All core functionality working
-- Tests passing
-- Build system stable
-- Documentation complete
-
-## 📊 Metrics
-
-### Code Quality
-- **Lines of Code**: ~1,500 lines
-- **Test Coverage**: Basic coverage for core functionality
-- **Build Size**: ~50KB total (minimized)
-- **Dependencies**: Minimal, well-maintained packages
-
-### Performance
-- **Build Time**: ~1.4 seconds
-- **Test Time**: ~0.7 seconds
-- **Extension Load**: Fast, no performance issues
-
-## 🎯 Current Focus
-
-The current implementation provides a solid foundation for:
-1. **Basic web scraping**: Visual training and data extraction
-2. **Settings management**: User preferences and API key storage
-3. **Extension development**: Complete build and test infrastructure
-
-The architecture is designed to support future AI integration and advanced features while maintaining clean separation of concerns and testability.
+**Why This Pattern**: Services hide implementation details, making the rest of the extension simpler and more testable. The AI Manager could be completely rewritten without changing how other components use it.
