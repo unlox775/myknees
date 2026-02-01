@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * Import mapping CSV(s): normalized_value, category → classification_mappings.
+ * Import one mapping CSV: normalized_value, category → classification_mappings.
  * Category name is looked up in classification_categories (seed from migration).
  *
  * Usage:
- *   node scripts/import-mappings.js --format=ally_bank path/to/ally_bank-mappings.csv
- *   node scripts/import-mappings.js --format=capital_one path/to/capital_one-mappings.csv
- *   node scripts/import-mappings.js --format=costco_receipts path/to/costco_receipts-mappings.csv
- * Or multiple files:
- *   node scripts/import-mappings.js --format=ally_bank ally.csv --format=capital_one cap.csv --format=costco_receipts costco.csv
+ *   node scripts/import-mappings.js <format> <path>
+ *   node scripts/import-mappings.js ally_bank imports/ignore/ally_bank-mappings.csv
+ *   node scripts/import-mappings.js capital_one imports/ignore/capital_one-mappings.csv
+ *   node scripts/import-mappings.js costco_receipts imports/ignore/costco_receipts-mappings.csv
  *
- * CSV must have header: normalized_value,category (or first column = normalized, second = category).
+ * First argument: format (ally_bank | capital_one | costco_receipts). Second: CSV path.
+ * CSV must have header: normalized_value,category.
  */
 
 const path = require('path');
@@ -118,26 +118,17 @@ async function importOneCsv(knex, formatId, csvPath, ts) {
 
 async function main() {
   const args = process.argv.slice(2);
-  let currentFormat = null;
-  const pairs = [];
-  for (const a of args) {
-    if (a.startsWith('--format=')) {
-      currentFormat = a.split('=')[1].trim();
-    } else if (currentFormat && !a.startsWith('--')) {
-      pairs.push({ formatId: currentFormat, csvPath: a });
-      currentFormat = null;
-    }
-  }
-  if (pairs.length === 0) {
-    console.error('Usage: node scripts/import-mappings.js --format=ally_bank path/to/ally_bank-mappings.csv [--format=capital_one path/to/capital_one-mappings.csv ...]');
+  const formatId = args[0]?.trim();
+  const csvPath = args[1]?.trim();
+  if (!formatId || !csvPath) {
+    console.error('Usage: node scripts/import-mappings.js <format> <path>');
+    console.error('Example: node scripts/import-mappings.js ally_bank imports/ignore/ally_bank-mappings.csv');
     process.exit(1);
   }
 
   const knex = getKnex();
   const ts = nowEpoch();
-  for (const { formatId, csvPath } of pairs) {
-    await importOneCsv(knex, formatId, csvPath, ts);
-  }
+  await importOneCsv(knex, formatId, csvPath, ts);
   console.log('Done.');
   await knex.destroy();
 }

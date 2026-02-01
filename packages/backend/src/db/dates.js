@@ -52,8 +52,25 @@ function isValidEpoch(ts) {
   return ts >= 946684800 && ts <= 4102444800;
 }
 
+/**
+ * Convert Excel serial date (e.g. 45964) to YYYY-MM-DD.
+ * Excel epoch: 1899-12-30 (day 1 = 1900-01-01).
+ */
+function excelSerialToDateString(serial) {
+  const n = Number(serial);
+  if (!Number.isFinite(n)) return null;
+  const excelEpoch = new Date(1899, 11, 30);
+  const d = new Date(excelEpoch.getTime() + n * 86400 * 1000);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 module.exports = {
   nowEpoch,
   validateTransactionDate,
   isValidEpoch,
+  excelSerialToDateString,
 };

@@ -19,13 +19,15 @@ function main() {
     process.exit(1);
   }
 
-  const minesRoot = path.join(HOME, '.myknees', 'backend');
+  const mykneesRoot = process.env.DATA_STORE_ROOT
+    ? path.resolve(HOME, process.env.DATA_STORE_ROOT.replace(/^~(?=\/|$)/, HOME))
+    : path.join(HOME, '.myknees', 'backend');
   const dirs = [
-    minesRoot,
-    path.join(minesRoot, 'imports'),
-    path.join(minesRoot, 'imports', 'ignore'),
-    path.join(minesRoot, 'data'),
-    path.join(minesRoot, 'backups'),
+    mykneesRoot,
+    path.join(mykneesRoot, 'imports'),
+    path.join(mykneesRoot, 'imports', 'ignore'),
+    path.join(mykneesRoot, 'data'),
+    path.join(mykneesRoot, 'backups'),
   ];
 
   for (const dir of dirs) {
@@ -40,9 +42,9 @@ function main() {
   // Symlinks from repo (packages/backend/) to ~/.myknees
   const backendRoot = path.resolve(__dirname, '..');
   const links = [
-    { from: path.join(backendRoot, 'imports'), to: path.join(minesRoot, 'imports') },
-    { from: path.join(backendRoot, 'data'), to: path.join(minesRoot, 'data') },
-    { from: path.join(backendRoot, 'backups'), to: path.join(minesRoot, 'backups') },
+    { from: path.join(backendRoot, 'imports'), to: path.join(mykneesRoot, 'imports') },
+    { from: path.join(backendRoot, 'data'), to: path.join(mykneesRoot, 'data') },
+    { from: path.join(backendRoot, 'backups'), to: path.join(mykneesRoot, 'backups') },
   ];
 
   for (const { from, to } of links) {
@@ -66,7 +68,7 @@ function main() {
     }
   }
 
-  console.log('\nData store ready at', minesRoot);
+  console.log('\nData store ready at', mykneesRoot);
   console.log('Run "npm run migrate" (or "make migrate" from backend) to create tables.');
 }
 

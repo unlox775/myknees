@@ -98,7 +98,7 @@ A transaction can have one or more line items (e.g., receipt line items). Starts
 
 - **What**: Backups of `imports/` and `data/` under `~/.myknees/backend/backups/`.
 - **Schedule**: Daily (e.g. cron at midnight). Run manually with `make backup` (from repo root or backend).
-- **Rotation**: Keep last 7 daily backups; then keep 4 weekly; delete older. Implemented in a small Node script invoked by Make/cron.
+- **Rotation**: Keep last 7 daily; then 4 weekly (one per week); then one per calendar month forever (no purge of monthly). Implemented in `scripts/backup.js`; invoked by Make/cron.
 
 ## Technology
 
@@ -108,14 +108,23 @@ A transaction can have one or more line items (e.g., receipt line items). Starts
 
 ## Classification rules (parse formats and categories)
 
-- **parse_formats**: One row per import format (e.g. `ally_bank`, `capital_one`, `costco_receipts`). Each format has a parser (base interface: `normalize(description)` → normalized string); Ally, Capital One, and Costco each have their own implementation (e.g. LC lowercase + regex).
+- **parse_formats**: One row per import format (e.g. `ally_bank`, `capital_one`, `costco_receipts`). Each format has a parser (base: `normalize(description)` → normalized string). **Pre-scrub and LC are per-format** and come from the XLSX **Work Tables** sheet: Ally (cols A–D), Capital One (I–M), Costco (R–U). Each parser implements its own pre-scrub and LC; there is no shared LC. Use `make xlsx-extract-work-formulas` to dump the Work Tables formulas and align parsers when the spreadsheet changes.
 - **classification_categories**: Domain table of final category names (Bills & Utilities, Income, Eating Out, etc.). **Seeded in migration** so the standard categories are part of the codebase.
 - **classification_raw_values**: Distinct raw description strings per parse format (from transaction CSVs).
 - **classification_normalized**: Cached normalizer output per raw value so changing the parser does not drift existing mappings.
 - **classification_mappings**: normalized_value → category_id (FK to classification_categories) per parse format; populated from mapping CSVs (normalized_value, category name).
 - **classification_overrides**: Per raw value, optional user override category_id.
 
-Lookup: raw → normalized (cached) → category_id from override if present, else from classification_mappings. Import: run `import-transactions.js` (format + transaction CSV) then `import-mappings.js` (format + mapping CSV); see README.
+Lookup: raw → normalized (cached) → category_id from override if present, else from classification_mappings. Mapping import: run `import-mappings.js` (format + mapping CSV); see README. Transaction CSV import is a **single pass**: one script (`import-transaction-records.js`) updates classification (distinct descriptions → raw_values + normalized) and inserts transaction rows; see below.
+
+### Single-pass transaction import (classification + transaction rows)
+
+One command with one CSV does both: (1) classification — distinct descriptions → raw_values + normalized; (2) transaction rows — insert into `transactions` with day-by-day dedupe and transition-day merge. When importing transaction **rows** into the `transactions` table (e.g. from Ally bills CSV):
+
+- **No unique key on (date, description, amount)** — you can have multiple identical rows on the same day (e.g. three McDonald's $10.02 on May 5). Dedupe is **day-by-day**: compare counts per (description, amount) in the DB vs the file; insert only the delta on days we're allowed to merge.
+- **Transition day**: A date that is either (a) the last day before a gap (size derived from the import: no gaps → 3; else longest run of consecutive missing days in the import × 3, e.g. 10-day gap → 30) with no transactions (“end” of a range), or (b) the first day after such a gap (“start” of a range). Only these dates may be amended when the import overlaps existing data. Any day with no existing data is always allowed (insert all rows).
+- **Rules**: If the file’s date range does not overlap any existing dates for that account → insert all rows. If it does overlap → insert only on days that are not already present, and on transition days merge (insert the count delta per (description, amount) for that day). On any other day that already has data, skip that day entirely.
+- **Edge case**: If you exported on Nov 10 and only got half of Nov 10’s transactions, re-importing treats Nov 10 as a transition day and inserts the additional rows (day-by-day count delta).
 
 ## Reference: Archived Finance Model
 

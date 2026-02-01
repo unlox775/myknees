@@ -1,11 +1,11 @@
-const allyBankParser = require('./parsers/ally-bank-parser');
-const capitalOneParser = require('./parsers/capital-one-parser');
-const costcoParser = require('./parsers/costco-parser');
+const { AllyBankParser } = require('./parsers/ally-bank-parser');
+const { CapitalOneParser } = require('./parsers/capital-one-parser');
+const { CostcoParser } = require('./parsers/costco-parser');
 
 const PARSERS = {
-  ally_bank: allyBankParser,
-  capital_one: capitalOneParser,
-  costco_receipts: costcoParser,
+  ally_bank: new AllyBankParser(),
+  capital_one: new CapitalOneParser(),
+  costco_receipts: new CostcoParser(),
 };
 
 /**

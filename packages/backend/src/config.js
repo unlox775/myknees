@@ -16,24 +16,27 @@ function isMacLayout() {
 }
 
 /**
- * Root data directory. On Mac: ~/.myknees. Otherwise throws.
+ * Root data directory. On Mac: DATA_STORE_ROOT env or ~/.myknees/backend. Otherwise throws.
+ * Set DATA_STORE_ROOT if you use a different path (e.g. ~/my-data/backend) so migrate, import, and sql all use the same DB.
  */
-function getMinesRoot() {
+function getMykneesRoot() {
   if (!isMacLayout()) {
     throw new Error(
       'Local data store is only supported on Mac (/Users/...). ' +
         'Set DATA_ENDPOINT (e.g. postgresql://...) for other platforms.'
     );
   }
-  const root = path.join(HOME, '.myknees', 'backend');
-  return root;
+  if (process.env.DATA_STORE_ROOT) {
+    return path.resolve(HOME, process.env.DATA_STORE_ROOT.replace(/^~(?=\/|$)/, HOME));
+  }
+  return path.join(HOME, '.myknees', 'backend');
 }
 
 /**
  * Ensure ~/.myknees and subdirs exist. Throws if not Mac.
  */
-function ensureMinesDirs() {
-  const root = getMinesRoot();
+function ensureMykneesDirs() {
+  const root = getMykneesRoot();
   const dirs = [
     root,
     path.join(root, 'imports'),
@@ -53,7 +56,7 @@ function ensureMinesDirs() {
  * Get path to SQLite database file (only when using local SQLite).
  */
 function getSqlitePath() {
-  const root = getMinesRoot();
+  const root = getMykneesRoot();
   return path.join(root, 'data', 'myknees.db');
 }
 
@@ -72,7 +75,7 @@ function getKnexConfig() {
       migrations: { directory: path.join(__dirname, 'db', 'migrations') },
     };
   }
-  ensureMinesDirs();
+  ensureMykneesDirs();
   return {
     client: 'better-sqlite3',
     connection: { filename: getSqlitePath() },
@@ -83,8 +86,8 @@ function getKnexConfig() {
 
 module.exports = {
   isMacLayout,
-  getMinesRoot,
-  ensureMinesDirs,
+  getMykneesRoot,
+  ensureMykneesDirs,
   getSqlitePath,
   getKnexConfig,
 };

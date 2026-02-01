@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Backs up ~/.myknees/imports and ~/.myknees/data into ~/.myknees/backups.
- * Rotation: keep last 7 daily backups; then keep 4 weekly; delete older.
+ * Rotation: keep last 7 daily; then 4 weekly; then one per month forever (no purge of monthly).
  * Schedule: run daily (e.g. cron 0 0 * * *).
  */
 
@@ -12,13 +12,14 @@ const { execSync } = require('child_process');
 const HOME = process.env.HOME || process.env.USERPROFILE || '';
 const isMac = typeof HOME === 'string' && HOME.startsWith('/Users/');
 
-const MINES_ROOT = path.join(HOME, '.myknees', 'backend');
-const BACKUPS_DIR = path.join(MINES_ROOT, 'backups');
-const IMPORTS_DIR = path.join(MINES_ROOT, 'imports');
-const DATA_DIR = path.join(MINES_ROOT, 'data');
+const MYKNEES_ROOT = path.join(HOME, '.myknees', 'backend');
+const BACKUPS_DIR = path.join(MYKNEES_ROOT, 'backups');
+const IMPORTS_DIR = path.join(MYKNEES_ROOT, 'imports');
+const DATA_DIR = path.join(MYKNEES_ROOT, 'data');
 
 const DAILY_TO_KEEP = 7;
 const WEEKLY_TO_KEEP = 4;
+/** Monthly backups are kept forever (one per calendar month). */
 
 function run(cmd, opts = {}) {
   execSync(cmd, { encoding: 'utf8', ...opts });
@@ -48,7 +49,7 @@ function createArchive() {
   const name = `backup-${ts}.tar.gz`;
   const archivePath = path.join(BACKUPS_DIR, name);
 
-  const cwd = MINES_ROOT;
+  const cwd = MYKNEES_ROOT;
   const files = ['imports', 'data'].filter((f) => fs.existsSync(path.join(cwd, f)));
   if (files.length === 0) {
     console.log('Nothing to back up (imports/data missing).');
@@ -74,23 +75,43 @@ function listBackupFiles() {
 }
 
 function rotate(backups) {
-  if (backups.length <= DAILY_TO_KEEP + WEEKLY_TO_KEEP) return;
+  if (backups.length === 0) return;
+  const keepSet = new Set();
+
+  // 1. Daily: keep newest N
   const daily = backups.slice(0, DAILY_TO_KEEP);
-  const rest = backups.slice(DAILY_TO_KEEP);
+  daily.forEach((b) => keepSet.add(b.name));
+
+  // 2. Weekly: from the rest, one per week for the last WEEKLY_TO_KEEP weeks
+  const restAfterDaily = backups.slice(DAILY_TO_KEEP);
   const byWeek = new Map();
-  for (const b of rest) {
+  for (const b of restAfterDaily) {
     const weekKey = getWeekKey(b.mtime);
     if (!byWeek.has(weekKey)) byWeek.set(weekKey, []);
     byWeek.get(weekKey).push(b);
   }
-  const weekly = [];
+  const weeklySnapshots = [];
   for (const [, arr] of byWeek) {
-    arr.sort((a, b) => b.mtime - a.mtime);
-    weekly.push(arr[0]);
+    arr.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    weeklySnapshots.push(arr[0]);
   }
-  weekly.sort((a, b) => b.mtime - a.mtime);
-  const keepWeekly = weekly.slice(0, WEEKLY_TO_KEEP);
-  const keepSet = new Set([...daily.map((b) => b.name), ...keepWeekly.map((b) => b.name)]);
+  weeklySnapshots.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+  const keepWeekly = weeklySnapshots.slice(0, WEEKLY_TO_KEEP);
+  keepWeekly.forEach((b) => keepSet.add(b.name));
+
+  // 3. Monthly: from everything not kept so far, keep one per calendar month forever
+  const restAfterWeekly = backups.filter((b) => !keepSet.has(b.name));
+  const byMonth = new Map();
+  for (const b of restAfterWeekly) {
+    const monthKey = getMonthKey(b.mtime);
+    if (!byMonth.has(monthKey)) byMonth.set(monthKey, []);
+    byMonth.get(monthKey).push(b);
+  }
+  for (const [, arr] of byMonth) {
+    arr.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    keepSet.add(arr[0].name);
+  }
+
   const toDelete = backups.filter((b) => !keepSet.has(b.name));
   for (const b of toDelete) {
     try {
@@ -100,6 +121,11 @@ function rotate(backups) {
       console.error('Failed to remove', b.name, e.message);
     }
   }
+}
+
+function getMonthKey(date) {
+  const d = new Date(date);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 
 function getWeekKey(date) {
@@ -116,8 +142,8 @@ function main() {
     console.error('Backups are only supported for local ~/.myknees (Mac).');
     process.exit(1);
   }
-  if (!fs.existsSync(MINES_ROOT)) {
-    console.error('Data store not found at', MINES_ROOT, '- run "make data-store" first.');
+  if (!fs.existsSync(MYKNEES_ROOT)) {
+    console.error('Data store not found at', MYKNEES_ROOT, '- run "make data-store" first.');
     process.exit(1);
   }
 

@@ -3,7 +3,7 @@
  * Export raw transaction data from the finance XLSX to CSV (one command).
  * Uses the known sheet/range map for "2025-07 Finance Analysis" style workbooks:
  * - 2025-07-Ally-bills → A:F (Date, Time, Bucket, Amount, Type, Description)
- * - 2025-07-26_CapitalOne → A:E (Transaction Date, Posted Date, Card No., Description, Category)
+ * - 2025-07-26_CapitalOne → A:K (Transaction Date … Category, Normalized, LC(), Debit, Descr Dups, Credit, Line Price)
  * - COSTCO Receipts → full (Reciept #, Date, N, Item #, Product Code, Raw price)
  *
  * Usage:
@@ -39,7 +39,7 @@ function findXlsxPath(argPath) {
 
 const RAW_SHEETS = [
   { sheet: '2025-07-Ally-bills', range: 'A:F' },
-  { sheet: '2025-07-26_CapitalOne', range: 'A:E' },
+  { sheet: '2025-07-26_CapitalOne', range: 'A:K' },
   { sheet: 'COSTCO Receipts', range: null }, // full
 ];
 

@@ -26,7 +26,7 @@ help:
 	@echo "  web-app-build         - Build web app (when ready)"
 	@echo ""
 	@echo "🔧 Backend Services:"
-	@echo "  data-store            - Create ~/.mines and symlinks (Mac)"
+	@echo "  data-store            - Create ~/.myknees/backend and symlinks (Mac)"
 	@echo "  backup                - Backup imports + data"
 	@echo "  migrate               - Run DB migrations"
 	@echo ""
@@ -163,7 +163,7 @@ backend-dev:
 backend-build:
 	@echo "Backend has no build step; use make data-store and make migrate"
 
-# Data store: create ~/.mines and symlinks (Mac only)
+# Data store: create ~/.myknees/backend and symlinks (Mac only)
 data-store:
 	@if [ -d "packages/backend" ]; then \
 		cd packages/backend && make data-store; \
@@ -171,7 +171,7 @@ data-store:
 		echo "❌ packages/backend not found"; exit 1; \
 	fi
 
-# Backend backup (imports + data -> ~/.mines/backups)
+# Backend backup (imports + data -> ~/.myknees/backend/backups)
 backup:
 	@if [ -d "packages/backend" ]; then \
 		cd packages/backend && make backup; \
