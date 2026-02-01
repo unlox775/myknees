@@ -1,0 +1,34 @@
+{
+  "name": "@myknees/backend",
+  "version": "1.0.0",
+  "description": "Backend data store and financial analysis for MyKnees",
+  "main": "src/index.js",
+  "scripts": {
+    "setup": "node scripts/setup-data-store.js",
+    "backup": "node scripts/backup.js",
+    "migrate": "knex migrate:latest",
+    "migrate:rollback": "knex migrate:rollback",
+    "db:reset": "node scripts/reset-db.js",
+    "xlsx:explore": "node scripts/xlsx-explore.js",
+    "xlsx:export": "node scripts/export-xlsx-to-csv.js",
+    "xlsx:export-raw": "node scripts/export-finance-raw.js",
+    "xlsx:import-classification": "node scripts/import-classification-from-xlsx.js",
+    "xlsx:export-mappings": "node scripts/export-classification-mappings.js",
+    "import:transactions": "node scripts/import-transactions.js",
+    "import:mappings": "node scripts/import-mappings.js",
+    "sql": "node scripts/sql-console.js"
+  },
+  "keywords": ["myknees", "finance", "backend"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.6.0",
+    "knex": "^3.1.0",
+    "pg": "^8.13.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18"
+  }
+}

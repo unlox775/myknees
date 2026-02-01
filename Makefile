@@ -25,9 +25,10 @@ help:
 	@echo "  web-app-dev           - Start web app development (when ready)"
 	@echo "  web-app-build         - Build web app (when ready)"
 	@echo ""
-	@echo "🔧 Backend Services (Planned):"
-	@echo "  backend-dev           - Start backend development (when ready)"
-	@echo "  backend-build         - Build backend (when ready)"
+	@echo "🔧 Backend Services:"
+	@echo "  data-store            - Create ~/.mines and symlinks (Mac)"
+	@echo "  backup                - Backup imports + data"
+	@echo "  migrate               - Run DB migrations"
 	@echo ""
 	@echo "📚 Shared Libraries (Planned):"
 	@echo "  shared-build          - Build shared libraries (when ready)"
@@ -155,14 +156,36 @@ web-app-build:
 	@echo "🚧 Web application build not yet implemented"
 	@echo "This will be available when the web-app package is set up"
 
-# Backend commands (placeholder)
+# Backend commands
 backend-dev:
-	@echo "🚧 Backend development not yet implemented"
-	@echo "This will be available when the backend package is set up"
+	@echo "Backend has no dev server yet; use make data-store and make migrate"
 
 backend-build:
-	@echo "🚧 Backend build not yet implemented"
-	@echo "This will be available when the backend package is set up"
+	@echo "Backend has no build step; use make data-store and make migrate"
+
+# Data store: create ~/.mines and symlinks (Mac only)
+data-store:
+	@if [ -d "packages/backend" ]; then \
+		cd packages/backend && make data-store; \
+	else \
+		echo "❌ packages/backend not found"; exit 1; \
+	fi
+
+# Backend backup (imports + data -> ~/.mines/backups)
+backup:
+	@if [ -d "packages/backend" ]; then \
+		cd packages/backend && make backup; \
+	else \
+		echo "❌ packages/backend not found"; exit 1; \
+	fi
+
+# Backend migrations
+migrate:
+	@if [ -d "packages/backend" ]; then \
+		cd packages/backend && make migrate; \
+	else \
+		echo "❌ packages/backend not found"; exit 1; \
+	fi
 
 # Shared libraries commands (placeholder)
 shared-build:

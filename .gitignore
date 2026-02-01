@@ -107,3 +107,8 @@ jspm_packages/
 # Temporary files
 tmp/
 temp/
+
+# Backend data store symlinks (point to ~/.mines; do not commit)
+packages/backend/imports
+packages/backend/data
+packages/backend/backups
