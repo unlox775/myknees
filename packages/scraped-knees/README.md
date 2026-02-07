@@ -1,27 +1,31 @@
 # ScrapedKnees - AI-Powered Web Data Scraper
 
-> Part of the [MyKnees Finance Application](../README.md) - AI-powered data extraction for financial insights.
+> Part of the [MyKnees Finance Application](../README.md)
 
-ScrapedKnees is a Chrome extension that uses AI to extract detailed purchase information from online retailers. When you see a transaction on your bank statement, ScrapedKnees can help you find the actual purchase details from Amazon, Walmart, Costco, and other online stores.
+ScrapedKnees is a Chrome extension that provides the foundation for AI-assisted data extraction. Today it includes a working extension scaffold, settings management, and an AI Manager capable of calling a selected AI provider using stored API keys.
 
 ## 🎯 Purpose
 
-**"I see a $127.45 charge on Amazon from last week. What did I actually buy?"**
+Lay a solid, modular foundation for general data extraction from webpages, with AI assistance routed through a unified provider interface.
 
-ScrapedKnees answers this question by:
-- **Training AI models** to recognize purchase data patterns on retailer websites
-- **Extracting detailed information** about your purchases (items, prices, dates, etc.)
-- **Connecting bank transactions** to actual purchase details
-- **Providing context** for your financial data
+## ✨ Current Features (Implemented)
 
-## ✨ Features
+- Extension scaffold: manifest, background, content, popup
+- Options page for AI provider selection and API key entry
+- AI Manager framework to send simple queries to the chosen AI provider
+- Build and dev tooling via Makefile and webpack
 
-- **Visual Training Mode**: Click on elements to train the AI to recognize data patterns
-- **Element Exclusion**: Exclude unwanted elements like advertisements
-- **Pagination Support**: Automatically detect and navigate through paginated content
-- **Data Export**: Export extracted data in CSV format
-- **Training Sessions**: Save and reuse training configurations
-- **Keyboard Shortcuts**: Quick access to training mode and controls
+See `docs/current-status.md` for the detailed status.
+
+## 🚫 Not Implemented Yet
+
+- Visual training mode and keyboard shortcuts
+- Data scraping/extraction engine and pagination handling
+- Repository model/storage for extracted data
+- Navigation/crawling controller and scheduler
+- Data broker (exports beyond basic development utilities)
+
+Planned specifications for these modules live under `docs/future-work/`.
 
 ## 🚀 Quick Start
 
@@ -32,26 +36,24 @@ ScrapedKnees answers this question by:
 
 ### Installation
 
-1. **Navigate to the package**
+1. Navigate to the package
    ```bash
    cd packages/scraped-knees
    ```
 
-2. **Install dependencies and build**
+2. Install dependencies and build
    ```bash
    make install
    make build
    ```
 
-3. **Load in Chrome**
+3. Load in Chrome
    - Open Chrome and go to `chrome://extensions/`
    - Enable "Developer mode"
    - Click "Load unpacked"
    - Select the `dist` folder from this package
 
 ### Using Makefile (Recommended)
-
-The package includes a comprehensive Makefile for easy development:
 
 ```bash
 # Show all available commands
@@ -79,73 +81,20 @@ make reload-chrome  # Show instructions for reloading
 make status         # Check project status and next steps
 ```
 
-## 📖 Usage
+## 📖 Usage (Today)
 
-### Training Mode
+- Open the Options page to select an AI provider and enter API keys
+- Use the AI Manager (via internal interfaces) to send basic AI queries
+- Popup currently provides minimal controls; advanced training/extraction is planned
 
-1. **Start Training**
-   - Click the extension icon in your browser
-   - Click "Start Training" button
-   - Or use keyboard shortcut: `Ctrl+Shift+S`
+## 🏗️ Architecture (High-Level)
 
-2. **Select Elements**
-   - Click on elements you want to extract data from
-   - Selected elements will be highlighted in green
-   - Use `Ctrl+Click` to exclude elements (highlighted in red)
+- **AI Manager** (`ai-manager.js`): Unified interface for AI calls using stored keys and provider selection
+- **Background Script** (`background.js`): Extension lifecycle and message routing
+- **Content Script** (`content.js`): Page context bridge and future interaction point
+- **Popup/Options**: Basic UI for configuration and minimal interactions
 
-3. **Save Training**
-   - Click "Save Training" in the training panel
-   - Or press `Escape` to stop training
-
-### Data Extraction
-
-1. **Extract Data**
-   - Click "Extract Data" in the extension popup
-   - The extension will use your training to extract data from the current page
-
-2. **Export Data**
-   - Click "Export Data" to download as CSV
-   - Data includes all extracted information with timestamps
-
-### Training Sessions
-
-- View all your training sessions in the extension popup
-- Click on a session to load it for the corresponding website
-- Sessions are automatically saved and can be reused
-
-## 🏗️ Architecture
-
-### Extension Components
-
-1. **AI Manager** (`ai-manager.js`)
-   - Main AI service orchestrator
-   - Provider management (OpenAI, Groq, OpenRouter, Anthropic)
-   - Settings and usage tracking
-   - Request logging and debugging
-
-2. **Background Script** (`background.js`)
-   - Service worker managing extension lifecycle
-   - Message routing between components
-   - Storage management for training sessions and scraped data
-   - Tab management and communication
-
-3. **Content Script** (`content.js`)
-   - Injected into web pages
-   - Training mode UI and interactions
-   - Element selection and overlay management
-   - Event handling and keyboard shortcuts
-
-4. **Popup Interface** (`popup.js` + `popup.html`)
-   - Main user interface
-   - Training session management
-   - Data extraction controls
-   - Export functionality
-
-5. **Injected Script** (`injected.js`)
-   - Advanced DOM manipulation
-   - Data extraction logic
-   - Pagination analysis
-   - Structured data parsing
+Planned modules and their interfaces are documented in `docs/future-work/`.
 
 ## 📁 Project Structure
 
@@ -157,122 +106,49 @@ packages/scraped-knees/
 │   │   ├── interfaces/        # AI provider interfaces
 │   │   ├── providers/         # AI provider implementations
 │   │   └── storage/           # AI-specific storage services
-│   ├── scraper/               # Data scraping service (future)
-│   ├── ui/                    # User interface components
-│   │   ├── options/           # Extension options page
-│   │   ├── popup/             # Extension popup
-│   │   └── content/           # Content scripts
+│   ├── ui/                    # Options/popup and future UI
 │   ├── background.js          # Background service worker
-│   ├── injected.js            # Content script injection
+│   ├── injected.js            # (Reserved) Page-context injection
 │   └── icons/                 # Extension icons
 ├── test/                      # Unit tests
-│   ├── setup.js               # Test environment
-│   ├── ai-manager.test.js     # AI manager tests
-│   ├── options.test.js        # Options page tests
-│   └── content.test.js        # Content script tests
 ├── dist/                      # Built extension files
 ├── manifest.json              # Extension manifest
 ├── package.json               # Dependencies and scripts
 ├── webpack.config.js          # Build configuration
-├── .eslintrc.js              # Code linting rules
-├── .babelrc                  # JavaScript transpilation
-├── Makefile                  # Development commands
-└── README.md                 # This file
+├── .eslintrc.js               # Code linting rules
+├── .babelrc                   # JavaScript transpilation
+├── Makefile                   # Development commands
+└── README.md                  # This file
 ```
-
-## 🛠️ Development
-
-### Development Workflow
-
-1. **Start development mode**
-   ```bash
-   make dev
-   ```
-   This will watch for changes and rebuild automatically.
-
-2. **Run tests**
-   ```bash
-   make test
-   ```
-
-3. **Lint code**
-   ```bash
-   make lint
-   ```
-
-### Debugging
-
-1. **Background Script Debugging**
-   - Go to `chrome://extensions/`
-   - Find your extension
-   - Click "service worker" link
-   - Use Chrome DevTools to debug
-
-2. **Content Script Debugging**
-   - Open DevTools on any webpage
-   - Check the Console tab for logs
-   - Use `console.log()` in content scripts
-
-3. **Popup Debugging**
-   - Right-click the extension icon
-   - Select "Inspect popup"
-   - Use DevTools to debug
 
 ## 🔗 Integration with MyKnees
 
-ScrapedKnees is designed to work as part of the larger MyKnees ecosystem:
+ScrapedKnees is designed as a self-contained, modular provider that will integrate with the broader MyKnees ecosystem once repository and broker modules exist.
 
-- **Data Source**: Provides detailed purchase data to the main MyKnees application
-- **AI Training**: Contributes to the overall AI model for financial pattern recognition
-- **User Experience**: Seamless integration with the web application and backend services
+## 📋 Roadmap (Docs-Only; No Code Changes in This PR)
 
-## 📋 Roadmap
+- Phase 1 (Done): Extension scaffold, Settings, AI Manager framework
+- Phase 2 (Planned): Repository Model & Service; Scraper Engine; Navigation Controller
+- Phase 3 (Planned): Scheduler; Data Broker (CSV first, then destinations like Google Sheets)
 
-### Phase 1: Core Functionality ✅
-- [x] Visual training mode
-- [x] Basic data extraction
-- [x] Training session management
-- [x] CSV export functionality
-
-### Phase 2: AI Integration 🚧
-- [ ] AI-powered pattern recognition
-- [ ] Automatic element detection
-- [ ] Smart pagination handling
-- [ ] Advanced data validation
-
-### Phase 3: MyKnees Integration 🚧
-- [ ] Direct integration with MyKnees backend
-- [ ] Real-time data synchronization
-- [ ] User authentication integration
-- [ ] Cloud storage for training sessions
-
-### Phase 4: Advanced Features 🚧
-- [ ] Multi-language support
-- [ ] Advanced retailer templates
-- [ ] Batch processing capabilities
-- [ ] Mobile companion app
+See `docs/future-work/` for detailed specs and interfaces.
 
 ## 🤝 Contributing
 
 See the main [MyKnees Contributing Guide](../../CONTRIBUTING.md) for details.
 
-### Package-Specific Guidelines
-
-1. **Follow the existing code style** and ESLint rules
-2. **Write tests** for new functionality
-3. **Update documentation** for any new features
-4. **Test on multiple retailer websites** to ensure compatibility
-
 ## 📄 License
 
-This package is part of the MyKnees project and is licensed under the MIT License.
+MIT License.
 
 ## 🔗 Links
 
 - [MyKnees Main Repository](../../README.md)
 - [Development Guide](../../DEVELOPMENT.md)
-- [Architecture Overview](../../docs/architecture.md)
+- [Current Status](docs/current-status.md)
+- [AI Manager](docs/ai-manager.md)
+- [Planned Modules](docs/future-work/)
 
 ---
 
-**ScrapedKnees** - Extracting insights from your online purchases. 🕷️💰
+ScrapedKnees — a modular, AI-ready foundation for web data extraction.
