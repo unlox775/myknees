@@ -334,7 +334,7 @@ async function main() {
   sum('');
   sum('── By account (dominant parse format from tx descriptions in scope) ──');
 
-  const accounts = await knex('accounts').select('id', 'identifier', 'name').orderBy('identifier');
+  const accounts = await knex('accounts').select('id', 'identifier', 'name', 'parse_format_id').orderBy('identifier');
 
   const fmtRows = await knex('parse_formats').select('id', 'identifier');
   const formatIdToIdent = new Map(fmtRows.map((f) => [f.id, f.identifier]));
@@ -368,36 +368,54 @@ async function main() {
     }
 
     const descriptions = [...descCounts.keys()];
-    const qmarks = descriptions.map(() => '?').join(',');
-    const domSql = `
+    let domPid;
+    let domFid;
+    if (acc.parse_format_id) {
+      domPid = Number(acc.parse_format_id);
+      domFid = formatIdToIdent.get(domPid) || '?';
+    } else {
+      const qmarks = descriptions.map(() => '?').join(',');
+      const domSql = `
       SELECT parse_format_id, COUNT(DISTINCT raw_value) AS n
       FROM classification_raw_values
       WHERE raw_value IN (${qmarks})
       GROUP BY parse_format_id
       ORDER BY n DESC
     `;
-    const domRes = await knex.raw(domSql, descriptions);
-    const domRows =
-      domRes && (domRes.rows !== undefined ? domRes.rows : Array.isArray(domRes[0]) ? domRes[0] : domRes);
-    const best = domRows && domRows[0];
-    if (!best || best.parse_format_id == null) {
-      sum(`${ident.padEnd(22)}  (no classification_raw_values match)`);
-      fs.writeFileSync(
-        path.join(dirAccount, `${ident}.txt`),
-        `No classification_raw_values matched transaction descriptions for ${ident}.\n`,
-        'utf8'
-      );
-      continue;
-    }
+      const domRes = await knex.raw(domSql, descriptions);
+      const domRows =
+        domRes && (domRes.rows !== undefined ? domRes.rows : Array.isArray(domRes[0]) ? domRes[0] : domRes);
+      const best = domRows && domRows[0];
+      if (!best || best.parse_format_id == null) {
+        sum(`${ident.padEnd(22)}  (no classification_raw_values match)`);
+        fs.writeFileSync(
+          path.join(dirAccount, `${ident}.txt`),
+          `No classification_raw_values matched transaction descriptions for ${ident}.\n`,
+          'utf8'
+        );
+        continue;
+      }
 
-    const domPid = Number(best.parse_format_id);
-    const domFid = formatIdToIdent.get(domPid) || formatIdToIdent.get(best.parse_format_id) || '?';
+      domPid = Number(best.parse_format_id);
+      domFid = formatIdToIdent.get(domPid) || formatIdToIdent.get(best.parse_format_id) || '?';
+    }
 
     const subRaws = await knex('classification_raw_values as rv')
       .join('classification_normalized as n', 'n.raw_value_id', 'rv.id')
       .where('rv.parse_format_id', domPid)
       .whereIn('rv.raw_value', descriptions)
       .select('rv.raw_value', 'n.normalized_value');
+
+    if (subRaws.length === 0) {
+      sum(`${ident.padEnd(22)}  format:${String(domFid).padEnd(14)}  (no rows for account parse format — run set-account-parse-format)`);
+      fs.writeFileSync(
+        path.join(dirAccount, `${ident}.txt`),
+        `No classification_raw_values for parse_format ${domFid} matching this account’s descriptions.\n` +
+          `Run: node scripts/set-account-parse-format.js --account=${ident} --parse-format=${domFid}\n`,
+        'utf8'
+      );
+      continue;
+    }
 
     const aStats = analyzeRows(subRaws);
 
@@ -427,7 +445,7 @@ async function main() {
       ) +
       '\n\n' +
       `# Account: ${acc.name || ident}\n` +
-      `# Dominant parse format for this account’s descriptions: ${domFid}\n`;
+      `# Parse format for this account: ${domFid}${acc.parse_format_id ? ' (accounts.parse_format_id)' : ' (inferred from descriptions)'}\n`;
 
     fs.writeFileSync(path.join(dirAccount, `${ident}.txt`), accBody, 'utf8');
   }

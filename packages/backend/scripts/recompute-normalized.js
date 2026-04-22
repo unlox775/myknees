@@ -27,6 +27,7 @@ async function main() {
 
   let updated = 0;
   let inserted = 0;
+  let unchanged = 0;
 
   for (const row of rawRows) {
     const parser = getParser(row.format_id);
@@ -36,6 +37,10 @@ async function main() {
 
     const existing = await knex('classification_normalized').where({ raw_value_id: row.raw_value_id }).first();
     if (existing) {
+      if (existing.normalized_value === normalizedValue) {
+        unchanged++;
+        continue;
+      }
       await knex('classification_normalized').where({ id: existing.id }).update({
         normalized_value: normalizedValue,
         updated_at: ts,
@@ -52,7 +57,16 @@ async function main() {
     }
   }
 
-  console.log('Recomputed normalized values: updated', updated, 'inserted', inserted, 'total raw values', rawRows.length);
+  console.log(
+    'Recomputed normalized values: total raw rows',
+    rawRows.length,
+    '| drifted (value changed)',
+    updated,
+    '| unchanged',
+    unchanged,
+    '| new norm rows',
+    inserted
+  );
   await knex.destroy();
 }
 

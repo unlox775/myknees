@@ -84,6 +84,8 @@ A transaction can have one or more line items (e.g., receipt line items). Starts
 
 ### Reconciliation Theory
 
+For **exploded accounts** (transfer-style vs receipt-style detail), validation rules, reporting behavior, and **implementation status** (what exists in code vs still to build), see [exploded-accounts-and-reconciliation.md](./exploded-accounts-and-reconciliation.md).
+
 - **Goal**: Summing "unlinked" or "leaf" items (transactions/line items that are not the target of a link) gives a unique list of movements and avoids double-counting.
 - **Example**: Ally pays Capital One. We have Transaction A (Ally, outflow) and Transaction B (Capital One, payment). We set A.linked_transaction_id = B (or B.linked_transaction_id = A). When reporting, we treat one side as explained and count the other.
 - **Breakdowns**: A Walmart transaction on Capital One might have line items. We might link one line item to another account’s transaction. Items that are linked *to* are "explained" and can be excluded from aggregate sums; the link source is the one we keep for "where did my money go."

@@ -21,6 +21,7 @@
     "import:transaction-records": "node scripts/import-transaction-records.js",
     "split-mint": "node scripts/split-mint-for-mykeeness.js",
     "recompute-normalized": "node scripts/recompute-normalized.js",
+    "set-account-parse-format": "node scripts/set-account-parse-format.js",
     "normalization-report": "node scripts/normalization-report.js",
     "low-hanging-fruit-report": "node scripts/low-hanging-fruit-report.js",
     "statement-pdf:ally": "node scripts/statement-pdf-to-import-csv.js ally",

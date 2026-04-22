@@ -22,13 +22,14 @@ function findByIdentifier(identifier) {
   return getKnex()('accounts').where({ identifier }).first();
 }
 
-function create({ identifier, name, type }) {
+function create({ identifier, name, type, parse_format_id }) {
   const ts = now();
   return getKnex()('accounts')
     .insert({
       identifier,
       name: name || identifier,
       type: type || 'bank',
+      parse_format_id: parse_format_id != null ? parse_format_id : null,
       created_at: ts,
       updated_at: ts,
     })
@@ -39,7 +40,7 @@ function create({ identifier, name, type }) {
 }
 
 function update(id, fields) {
-  const allowed = ['name', 'type', 'identifier'];
+  const allowed = ['name', 'type', 'identifier', 'parse_format_id'];
   const updates = { updated_at: now() };
   for (const k of allowed) {
     if (fields[k] !== undefined) updates[k] = fields[k];

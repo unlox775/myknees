@@ -1,6 +1,6 @@
 # MyKnees Backend - Data store, migrations, backups
 
-.PHONY: help install data-store setup backup migrate migrate-rollback db-reset add-account xlsx-explore xlsx-export xlsx-import-classification sql check-csv normalization-report low-hanging-fruit-report
+.PHONY: help install data-store setup backup migrate migrate-rollback db-reset add-account set-account-parse-format xlsx-explore xlsx-export xlsx-import-classification sql check-csv normalization-report low-hanging-fruit-report
 
 help:
 	@echo "Backend commands:"
@@ -11,7 +11,8 @@ help:
 	@echo "  migrate         - Run migrations"
 	@echo "  migrate-rollback - Rollback last migration"
 	@echo "  db-reset        - Rollback all + migrate (clean schema)"
-	@echo "  add-account     - Add an account (IDENTIFIER=Ally_Bank NAME='Ally Bank' TYPE=bank)"
+	@echo "  add-account     - Add an account (IDENTIFIER=… NAME=… TYPE=… PARSE_FORMAT=chase_visa optional)"
+	@echo "  set-account-parse-format - Pin normalizer + seed classification (ACCOUNT=… PARSE_FORMAT=…)"
 	@echo "  xlsx-explore    - List sheets, used range, formula columns (first .xlsx in imports/ignore)"
 	@echo "  xlsx-dump-formulas - Dump all cell formulas (SHEET=name for one sheet)"
 	@echo "  xlsx-extract-work-formulas - Extract pre-scrub + LC from Work Tables sheet"
@@ -50,7 +51,11 @@ db-reset:
 
 # Add account (IDENTIFIER=Ally_Bank NAME='Ally Bank' TYPE=bank). NAME/TYPE optional. DEBUG=1 adds --debug.
 add-account:
-	node scripts/add-account.js --identifier=$(IDENTIFIER) $(if $(NAME),--name="$(NAME)") $(if $(TYPE),--type=$(TYPE)) $(if $(DEBUG),--debug)
+	node scripts/add-account.js --identifier=$(IDENTIFIER) $(if $(NAME),--name="$(NAME)") $(if $(TYPE),--type=$(TYPE)) $(if $(PARSE_FORMAT),--parse-format=$(PARSE_FORMAT),) $(if $(DEBUG),--debug)
+
+# Pin account to a parse_formats row and upsert classification for all distinct descriptions on that account.
+set-account-parse-format:
+	node scripts/set-account-parse-format.js --account=$(ACCOUNT) --parse-format=$(PARSE_FORMAT)
 
 xlsx-explore:
 	node scripts/xlsx-explore.js $(XLSX_PATH)

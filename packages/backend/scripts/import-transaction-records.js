@@ -28,7 +28,9 @@
  * Usage:
  *   node scripts/import-transaction-records.js --format=ally_bank --account=Ally_Bank path/to/ally-bills.csv
  *
- * --format: ally_bank | capital_one | costco_receipts
+ * --format: ally_bank | capital_one | chase_visa | costco_receipts
+ * CSV columns for chase_visa match Capital One exports (same as capital_one).
+ * If the account has parse_format_id set, classification uses that format even when --format=capital_one.
  * --account: account identifier or numeric id
  */
 
@@ -36,6 +38,7 @@ const path = require('path');
 const fs = require('fs');
 const { getKnex } = require('../src/db/knex');
 const { getParser } = require('../src/classification');
+const { upsertClassificationForRaw } = require('../src/classification/upsert-classification');
 const { nowEpoch, validateTransactionDate, excelSerialToDateString } = require('../src/db/dates');
 
 const DEFAULT_GAP_DAYS = 3;
@@ -45,6 +48,7 @@ const FORMAT_COLUMNS = {
   ally_bank: { date: 'Date', description: 'Description', amount: 'Amount' },
   /** Workbook export uses Line Price; website CSV uses Debit + Credit (positive numbers). */
   capital_one: { date: 'Transaction Date', description: 'Description', amount: 'Line Price' },
+  chase_visa: { date: 'Transaction Date', description: 'Description', amount: 'Line Price' },
   costco_receipts: { date: 'Date', description: 'Product Code', amount: 'Raw price' },
 };
 
@@ -189,48 +193,17 @@ function countByDateAndKey(rows) {
 }
 
 async function runClassification(knex, formatId, distinctDescriptions, ts) {
-  const parser = getParser(formatId);
-  if (!parser) return { insertedRaw: 0, insertedNorm: 0 };
-  const formatRow = await knex('parse_formats').where({ identifier: formatId }).first();
-  if (!formatRow) return { insertedRaw: 0, insertedNorm: 0 };
-  const parseFormatId = formatRow.id;
+  if (!getParser(formatId)) return { insertedRaw: 0, insertedNorm: 0, updatedNorm: 0 };
   let insertedRaw = 0;
   let insertedNorm = 0;
+  let updatedNorm = 0;
   for (const rawValue of distinctDescriptions) {
-    let rawRow = await knex('classification_raw_values')
-      .where({ parse_format_id: parseFormatId, raw_value: rawValue })
-      .first();
-    if (!rawRow) {
-      await knex('classification_raw_values').insert({
-        parse_format_id: parseFormatId,
-        raw_value: rawValue,
-        created_at: ts,
-        updated_at: ts,
-      });
-      rawRow = await knex('classification_raw_values')
-        .where({ parse_format_id: parseFormatId, raw_value: rawValue })
-        .first();
-      insertedRaw++;
-    }
-    const normalizedValue = parser.normalize(rawValue);
-    if (!normalizedValue) continue;
-    const existingNorm = await knex('classification_normalized').where({ raw_value_id: rawRow.id }).first();
-    if (!existingNorm) {
-      await knex('classification_normalized').insert({
-        raw_value_id: rawRow.id,
-        normalized_value: normalizedValue,
-        created_at: ts,
-        updated_at: ts,
-      });
-      insertedNorm++;
-    } else {
-      await knex('classification_normalized').where({ id: existingNorm.id }).update({
-        normalized_value: normalizedValue,
-        updated_at: ts,
-      });
-    }
+    const r = await upsertClassificationForRaw(knex, formatId, rawValue, ts);
+    if (r.insertedRaw) insertedRaw++;
+    if (r.insertedNorm) insertedNorm++;
+    if (r.updatedNorm) updatedNorm++;
   }
-  return { insertedRaw, insertedNorm };
+  return { insertedRaw, insertedNorm, updatedNorm };
 }
 
 async function main() {
@@ -248,7 +221,7 @@ async function main() {
   const accountIdOrIdentifier = accountArg.split('=')[1].trim();
   const cols = FORMAT_COLUMNS[formatId];
   if (!cols) {
-    console.error('Unknown format. Use: ally_bank, capital_one, costco_receipts');
+    console.error('Unknown format. Use: ally_bank, capital_one, chase_visa, costco_receipts');
     process.exit(1);
   }
 
@@ -277,6 +250,20 @@ async function main() {
     accountId = row.id;
   }
 
+  const accountRow = await knex('accounts').where({ id: accountId }).first();
+  let classificationFormatId = formatId;
+  if (accountRow && accountRow.parse_format_id) {
+    const pf = await knex('parse_formats').where({ id: accountRow.parse_format_id }).first();
+    if (pf) classificationFormatId = pf.identifier;
+  }
+  if (!getParser(classificationFormatId)) {
+    console.error('No parser for classification format:', classificationFormatId);
+    process.exit(1);
+  }
+  if (classificationFormatId !== formatId) {
+    console.log('Account parse_format override: classification uses', classificationFormatId, '(CSV format', formatId + ')');
+  }
+
   const content = fs.readFileSync(resolvedPath, 'utf8');
   const rows = parseCsv(content);
   if (rows.length < 2) {
@@ -290,7 +277,7 @@ async function main() {
   /** @type {ReturnType<typeof resolveCapitalOneColumns>} */
   let capitalOneSpec = null;
 
-  if (formatId === 'capital_one') {
+  if (formatId === 'capital_one' || formatId === 'chase_visa') {
     capitalOneSpec = resolveCapitalOneColumns(header);
     if (!capitalOneSpec) {
       console.error(
@@ -339,14 +326,25 @@ async function main() {
     }
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
     const amount =
-      formatId === 'capital_one' ? capitalOneRowAmount(capitalOneSpec, r) : parseAmount(r[amountColIdx]);
+      formatId === 'capital_one' || formatId === 'chase_visa'
+        ? capitalOneRowAmount(capitalOneSpec, r)
+        : parseAmount(r[amountColIdx]);
     if (amount == null) continue;
     incoming.push({ date: dateStr, description: desc, amount });
   }
 
   // --- Pass 1: Classification (distinct descriptions → raw_values + normalized) ---
-  const classResult = await runClassification(knex, formatId, distinctDescriptions, ts);
-  console.log('Classification: distinct descriptions', distinctDescriptions.size, '| new raw', classResult.insertedRaw, '| new normalized', classResult.insertedNorm);
+  const classResult = await runClassification(knex, classificationFormatId, distinctDescriptions, ts);
+  console.log(
+    'Classification: distinct descriptions',
+    distinctDescriptions.size,
+    '| new raw',
+    classResult.insertedRaw,
+    '| new normalized',
+    classResult.insertedNorm,
+    '| normalized value drift (updated)',
+    classResult.updatedNorm ?? 0
+  );
 
   if (incoming.length === 0) {
     console.log('No valid transaction rows to import.');

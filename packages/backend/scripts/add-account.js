@@ -12,6 +12,7 @@
  * --identifier  Required. Unique slug (e.g. Ally_Bank, Capital_One).
  * --name        Optional. Display name (default: identifier with underscores → spaces).
  * --type        Optional. bank | credit_card | cash (default: bank).
+ * --parse-format=ally_bank | capital_one | chase_visa | costco_receipts  Optional. Pins normalizer for this account.
  * --debug       Optional. Print DB path, DATA_STORE_ROOT, resolved root, schema note.
  */
 
@@ -24,8 +25,9 @@ function parseArgs() {
   const identifier = args.find((a) => a.startsWith('--identifier='))?.split('=')[1]?.trim();
   const name = args.find((a) => a.startsWith('--name='))?.split('=')[1]?.trim();
   const type = args.find((a) => a.startsWith('--type='))?.split('=')[1]?.trim();
+  const parseFormat = args.find((a) => a.startsWith('--parse-format='))?.split('=')[1]?.trim();
   const debug = args.includes('--debug');
-  return { identifier, name, type, debug };
+  return { identifier, name, type, parseFormat, debug };
 }
 
 function printDebugStderr(cfg) {
@@ -49,7 +51,7 @@ async function main() {
   if (cfg.client === 'better-sqlite3' && cfg.connection?.filename) {
     console.error('DB:', cfg.connection.filename);
   }
-  const { identifier, name, type, debug } = parseArgs();
+  const { identifier, name, type, parseFormat, debug } = parseArgs();
   if (debug) printDebugStderr(cfg);
   if (!identifier) {
     console.error('Usage: node scripts/add-account.js --identifier=Ally_Bank [--name="Ally Bank"] [--type=bank]');
@@ -69,11 +71,22 @@ async function main() {
     return;
   }
 
+  let parseFormatId;
+  if (parseFormat) {
+    const pf = await knex('parse_formats').where({ identifier: parseFormat }).first();
+    if (!pf) {
+      console.error('Unknown --parse-format:', parseFormat);
+      process.exit(1);
+    }
+    parseFormatId = pf.id;
+  }
+
   const displayName = name || identifier.replace(/_/g, ' ');
   const account = await accounts.create({
     identifier,
     name: displayName,
     type: type || 'bank',
+    parse_format_id: parseFormatId != null ? parseFormatId : undefined,
   });
   console.log('Created account:', account.id, account.identifier, account.name, account.type);
   await knex.destroy();
