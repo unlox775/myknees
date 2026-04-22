@@ -16,7 +16,7 @@ In a simple hierarchy, one account (e.g. Ally Bank) is the main **money source**
 
 **Urgency:** If these stay unlinked, aggregates are wrong (false expenses, false income).
 
-**Detection (planned):** Often driven by **normalized descriptions** (e.g. both institutions label the payment similarly after normalization), plus **date** and **amount** (with sign rules). Ambiguity (2–3 candidates) requires explicit disambiguation or a stored link.
+**Detection (implemented for transfers):** Configurable **reconciliation relationships** pair two accounts (A = fund source, B = destination ledger). Per-side **patterns** match `normalized_equals` / `normalized_contains` / `raw_contains` using the **same live parsers** as classification (`parser.normalize(description)` on each transaction — not the cached `classification_normalized` table). Prefer **`normalized_equals` + one canonical phrase per flow** (extend Ally / Capital One parsers so variants collapse to that phrase). **`exclude=1` patterns** drop a row from scope if they match (e.g. auto loan vs credit card). Pairs require **compatible magnitudes** and **dates** within `date_slippage_days`. See [Type A transfer tooling](#type-a-transfer-tooling) below.
 
 ### Type B — Detail explosion (receipt / sub-ledger reconciliation)
 
@@ -42,51 +42,63 @@ If you transfer **out** of Ally to an account that is **not** imported (or not c
 | Link two transactions across accounts | `transactions.linked_transaction_id` → `transactions.id` (documented; must be **different** account — enforced in app/docs only, not DB CHECK) |
 | Link a receipt line to another account’s transaction | `line_items.linked_transaction_id` |
 | Link line to line | `line_items.linked_line_item_id` |
-| “Explosion mode” per account (Type A vs B, parent id, merchant id) | **Not present** — `accounts` has `identifier`, `name`, `type`, optional `parse_format_id` in code only (see [Schema gaps](#schema-gaps)) |
+| “Explosion mode” per account (Type A vs B, parent id, merchant id) | **Not present** — `accounts` has `identifier`, `name`, `type`, optional `parse_format_id` (migration `20250422100000_*`) |
+| Many-to-many transfer rules (same card, multiple banks) | **Partial** — add **one relationship row per ordered pair** (A→B); same two accounts with reversed A/B if you need both directions as separate matchers |
 | Stored “reconciliation status”, confidence, or user lock | **Not present** |
 | Mutual consistency (if A links B, B links A) | **Not implemented** — single FK direction only |
 
 ## What is already implemented
 
-1. **Tables and FKs** — `accounts`, `transactions` (with `linked_transaction_id`), `line_items` (with `linked_transaction_id` and `linked_line_item_id`) from migration `20250131000000_create_initial_schema.js`.
-2. **Documentation of reconciliation theory** — [architecture.md](./architecture.md) § “Reconciliation Theory” and line-item linking notes.
-3. **Repositories** — `transactions.create` / `update` accept `linked_transaction_id`; `line-items` repository supports link fields on create/update ([`src/repositories/transactions.js`](../src/repositories/transactions.js), [`src/repositories/line-items.js`](../src/repositories/line-items.js)).
-4. **Library entrypoint** — [`src/index.js`](../src/index.js) exports `accounts`, `transactions`, `lineItems` for programmatic use.
-5. **Classification** — `parse_formats`, normalizers, and mapping tables support **consistent naming** *inputs* for future matchers (no matcher wired to links yet).
+1. **Tables and FKs** — `accounts`, `transactions` (`linked_transaction_id`), `line_items` (link columns) from `20250131000000_create_initial_schema.js`.
+2. **`accounts.parse_format_id`** — Added when missing by migration [`20250422100000_accounts_parse_format_and_transfer_reconciliation.js`](../src/db/migrations/20250422100000_accounts_parse_format_and_transfer_reconciliation.js).
+3. **Transfer reconciliation schema** — `reconciliation_relationships` (pair of accounts, `date_slippage_days`, `amount_tolerance`, `active`) and `reconciliation_relationship_patterns` (`side` `a`|`b`, `match_kind`, `pattern`, `exclude` 0|1).
+4. **Matcher + jobs** — [`src/reconciliation/transfer-relationship-reconciler.js`](../src/reconciliation/transfer-relationship-reconciler.js): clears A→B links for a relationship (`--force`), pairs rows, writes **`transactions.linked_transaction_id` on account A only** → B. Post-import hook [`run-after-import.js`](../src/reconciliation/run-after-import.js).
+5. **CLI** — `npm run reconcile:seed-ally-capital-one`, `npm run reconcile:transfers`, `npm run reconcile:report`; import calls reconcile unless `--skip-reconcile`.
+6. **Repositories + library** — [`src/index.js`](../src/index.js) exports `reconciliation.*`.
 
-## What is not implemented (today)
+## Type A transfer tooling
 
-1. **Automatic sharding / parent-child accounts** — No `parent_account_id`, no graph of “this account explodes into these children,” no automatic rollup.
-2. **Import pipeline never sets links** — [`scripts/import-transaction-records.js`](../scripts/import-transaction-records.js) inserts `account_id`, `date`, `description`, `amount`, timestamps only. It does **not** set `linked_transaction_id`, populate `line_items`, or run reconciliation.
-3. **No reconciliation engine** — No job that pairs Ally ↔ Capital One rows by normalized description + amount + date, no 1:1 validation report, no handling of ambiguous duplicates.
-4. **No reporting queries** for “unreconciled Type A (must fix)” vs “unreconciled Type B (expected until linked)” vs “leaf rows for expense sum.”
-5. **No policy layer** — “Ignore unreconciled merchant lines,” “exclude explained card row,” “treat unlinked large outflows as warnings” are **behaviors to implement**, not SQL views in repo.
-6. **Receipt import as line items** — `costco_receipts` exists as a **parse format** for classification/normalization; the same CSV path still creates **flat `transactions` rows**, not a parent transaction + `line_items` tree tied to a card purchase.
-7. **DB enforcement** — “Linked row must be different account” and “at most one of `linked_transaction_id` / `linked_line_item_id` on line_items” are documented constraints, not database CHECKs or triggers.
+| Command | Purpose |
+|--------|---------|
+| `npm run reconcile:seed-ally-capital-one` | Creates Ally_Bank → Capital_One relationship with **tight** patterns (`normalized_equals` canonical phrases) if that pair does not exist. |
+| `npm run reconcile:patch-ally-c1-patterns` | **Existing DBs:** replace old fuzzy Ally↔Capital One patterns with card-only `normalized_equals` rows + auto-loan exclude. Then run `reconcile:transfers -- --relationship=1 --force`. |
+| `npm run reconcile:status` | **Read-only:** same as `--all` if you pass nothing else. Counts linked vs unmatched, sample rows. **No DB writes, no matcher.** |
+| `npm run reconcile:status -- --all` | Same, all relationships explicitly. |
+| `npm run reconcile:status -- --relationship=1 --strict` | Same; **exit 1** if any gaps (for scripts/CI). |
+| `npm run reconcile:transfers -- --all` | **Writes links:** run matcher on every relationship; human summary with ✓/✗, samples (use `--json` for machine-only). |
+| `npm run reconcile:transfers -- --relationship=1` | Matcher for one relationship. |
+| `npm run reconcile:transfers -- --relationship=1 --force` | **Clear** A→B links for that relationship, then **re-link**. |
+| `npm run reconcile:transfers -- --relationship=1 --dry-run` | No writes; human summary shows what **would** link. |
+| `npm run reconcile:transfers -- --sample=20` | Show up to 20 sample rows per unmatched list (default **15**; newest dates first). |
+| `npm run reconcile:report` | Writes `data/reconciliation-reports/<timestamp>/` for **all** relationships if you pass no scope (same default as status). |
+| `npm run reconcile:report -- --all` | Same, explicit. Matcher **dry-run** + full lists — not the same as `reconcile:status`. |
 
-## Schema gaps (engineering note)
+**Patterns:** Include patterns **OR** together on a side. **Exclude** patterns (`exclude=1`) remove a row if they match. **Many banks → one card:** one relationship per funding account; tune parsers so each bank’s card payment line normalizes to the **same** string you put in `normalized_equals`, or add one include phrase per bank if you must.
 
-- **`accounts.parse_format_id`** is read/written in [`scripts/add-account.js`](../scripts/add-account.js) and [`src/repositories/accounts.js`](../src/repositories/accounts.js) and referenced in import, but **no migration in this repo adds `parse_format_id` to `accounts`**. Fresh installs from migrations alone may not match what the scripts expect until a migration is added (or the column exists from manual DDL).
+**Still to improve**
 
-## Suggested implementation phases
+- **Ambiguity:** multiple same-amount candidates within the date window → no auto-link; listed in JSON / report. Tie-break uses **closest posting date** only when strictly closer than the second best.
+- **Expense rollup / “leaf” queries** — not yet a shipped SQL view; links are stored for downstream reporting.
+- **Manual override UI** — use `sql-console` / repository `update` for now.
 
-Phases are ordered so Type A (transfers) unblocks correct totals before Type B (receipt beauty).
+## What is not implemented (yet)
 
-### Phase 1 — Account metadata and invariants
+1. **Automatic sharding / parent-child accounts** — No `parent_account_id` or rollup graph.
+2. **Type B receipt reconciliation** — No parent txn + `line_items` import path tied to card rows; no merchant “ignore until linked” rollups.
+3. **DB CHECKs** — “Linked row must be different account” enforced in matcher only.
+4. **Manual link editor / audit trail** — no first-class UI or `linked_by` column.
 
-- Add migration: `accounts.parse_format_id` (if missing), and new columns or tables for **explosion role** (e.g. `none` \| `transfer_counterparty` \| `detail_merchant`) and optional **`parent_account_id`** or a separate **`account_links`** table if many-to-many is needed later.
-- Add DB or application checks: linked transactions must reference different `account_id`; optional unique index strategies to prevent one-to-many accidental links (product decision).
+## Suggested implementation phases (updated)
 
-### Phase 2 — Type A matcher + reports
+### Phase 1 — Account metadata and invariants (partially done)
 
-- **Candidate generation:** same calendar `date` (or ±N days for posting lag), amount match with sign convention per pair of account types, normalized description match (reuse `classification_normalized` or a dedicated “payment fingerprint” table).
-- **Persistence:** write `linked_transaction_id` on one or both rows; define canonical direction (e.g. always fund-source → card).
-- **Reports:** “Ally rows that look like payments to linked accounts but have **no** counterpart”; “Capital One credits that look like payments with **no** Ally debit”; “ambiguous (count > 1)” for manual resolution.
+- ~~`accounts.parse_format_id` migration~~ **Done** (same migration as reconciliation tables).
+- Still open: **explosion role**, **`parent_account_id`**, optional unique guard so one B row cannot be targeted twice.
 
-**Acceptance criteria (Type A):**
+### Phase 2 — Type A matcher + reports (largely done)
 
-- For configured account pairs, every normalized payment pattern in scope either has a **unique** 1:1 link or appears on an **exceptions** report.
-- Running expense rollup on test data **does not** double-count a linked transfer (definition of “which side is leaf” is explicit and tested).
+- ~~Candidate generation, persistence on A→B, reports~~ **Done** via relationships + `reconcile:report`.
+- **Acceptance (ongoing):** tune patterns and `date_slippage_days` / `amount_tolerance` per institution; review `unmatchedA` / `unmatchedB` in reports for payments from **other** banks or description drift.
 
 ### Phase 3 — Type B receipt model + import
 
@@ -113,8 +125,15 @@ Phases are ordered so Type A (transfers) unblocks correct totals before Type B (
 
 | Area | Path |
 |------|------|
-| Schema | [`src/db/migrations/20250131000000_create_initial_schema.js`](../src/db/migrations/20250131000000_create_initial_schema.js) |
-| Import (no links) | [`scripts/import-transaction-records.js`](../scripts/import-transaction-records.js) |
+| Schema (core) | [`src/db/migrations/20250131000000_create_initial_schema.js`](../src/db/migrations/20250131000000_create_initial_schema.js) |
+| Schema (parse_format + reconciliation) | [`src/db/migrations/20250422100000_accounts_parse_format_and_transfer_reconciliation.js`](../src/db/migrations/20250422100000_accounts_parse_format_and_transfer_reconciliation.js) |
+| Schema (`patterns.exclude`) | [`src/db/migrations/20250423120000_reconciliation_pattern_exclude.js`](../src/db/migrations/20250423120000_reconciliation_pattern_exclude.js) |
+| Import + post-import reconcile | [`scripts/import-transaction-records.js`](../scripts/import-transaction-records.js) (`--skip-reconcile` to disable) |
+| Matcher | [`src/reconciliation/transfer-relationship-reconciler.js`](../src/reconciliation/transfer-relationship-reconciler.js) |
+| Read-only status | [`src/reconciliation/relationship-status.js`](../src/reconciliation/relationship-status.js), [`scripts/reconciliation-status.js`](../scripts/reconciliation-status.js) |
+| CLI formatting | [`src/reconciliation/cli-output.js`](../src/reconciliation/cli-output.js) |
+| CLI | [`scripts/auto-reconcile-transfer-relationships.js`](../scripts/auto-reconcile-transfer-relationships.js), [`scripts/reconciliation-relationship-report.js`](../scripts/reconciliation-relationship-report.js), [`scripts/seed-ally-capital-one-relationship.js`](../scripts/seed-ally-capital-one-relationship.js), [`scripts/patch-ally-capital-one-card-only-patterns.js`](../scripts/patch-ally-capital-one-card-only-patterns.js) |
+| Parsers (canonical phrases) | [`src/classification/parsers/ally-bank-parser.js`](../src/classification/parsers/ally-bank-parser.js), [`src/classification/parsers/capital-one-parser.js`](../src/classification/parsers/capital-one-parser.js) |
 | Transactions API | [`src/repositories/transactions.js`](../src/repositories/transactions.js) |
 | Line items API | [`src/repositories/line-items.js`](../src/repositories/line-items.js) |
 | Core architecture | [architecture.md](./architecture.md) |

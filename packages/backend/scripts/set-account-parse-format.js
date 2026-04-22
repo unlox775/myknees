@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Point an account at a parse format (normalizer) and seed classification_raw_values +
- * classification_normalized for every distinct transaction description on that account.
+ * Set accounts.parse_format_id and seed classification rows for every distinct
+ * transaction description on that account (for the chosen format).
  *
  *   node scripts/set-account-parse-format.js --account=Chase_VISA --parse-format=chase_visa
  *
- * After changing parsers or this assignment, run: npm run recompute-normalized
+ * Does not modify other agents’ migrations. Run migrate first so accounts.parse_format_id exists.
+ * Then: npm run recompute-normalized
  */
 
 const { getKnex } = require('../src/db/knex');
@@ -41,7 +42,7 @@ async function main() {
   const ts = nowEpoch();
   await knex('accounts').where({ id: account.id }).update({ parse_format_id: pf.id, updated_at: ts });
 
-  const rows = await knex('transactions').where({ account_id: account.id }).distinct('description');
+  const rows = await knex('transactions').where({ account_id: account.id }).select('description');
   const distinct = [...new Set(rows.map((r) => String(r.description || '').trim()).filter(Boolean))];
 
   let insertedRaw = 0;
@@ -59,18 +60,16 @@ async function main() {
     account.identifier,
     '→ parse_format',
     formatArg,
-    '(id',
-    pf.id + ')',
     '| distinct descriptions',
     distinct.length,
-    '| new raw rows',
+    '| new raw',
     insertedRaw,
-    '| new norm rows',
+    '| new norm',
     insertedNorm,
-    '| norm drift (updated)',
+    '| norm drift',
     updatedNorm
   );
-  console.log('Run: npm run recompute-normalized  (refreshes all formats; safe after parser edits)');
+  console.log('Next: npm run recompute-normalized');
   await knex.destroy();
 }
 

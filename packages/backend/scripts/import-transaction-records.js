@@ -25,6 +25,9 @@
  *   is not a transition day we skip. Days with no existing data are always allowed (insert
  *   all rows for that day).
  *
+ * Pass --skip-reconcile to skip the post-import transfer auto-reconciliation pass
+ * (see reconciliation_relationships + npm run reconcile:transfers).
+ *
  * Usage:
  *   node scripts/import-transaction-records.js --format=ally_bank --account=Ally_Bank path/to/ally-bills.csv
  *
@@ -419,6 +422,23 @@ async function main() {
   console.log('Import longest gap (days):', getLongestGapInDays(incomingDates), '→ gap for transition-day detection:', gapDays);
   console.log('Existing dates in DB:', existingDates.length, '| Transition days (merge allowed):', transitionDays.size);
   console.log('Rows in file:', incoming.length, '| Rows inserted:', inserted);
+
+  const skipReconcile = args.includes('--skip-reconcile');
+  if (!skipReconcile) {
+    const { runReconcileAfterImport } = require('../src/reconciliation/run-after-import');
+    const rec = await runReconcileAfterImport(knex, accountId);
+    if (rec.error) {
+      console.warn('Post-import reconcile:', rec.error);
+    } else if (rec.summary && rec.summary.relationships > 0) {
+      console.log(
+        'Post-import reconcile: relationships',
+        rec.summary.relationships,
+        '| new links',
+        rec.summary.linked
+      );
+    }
+  }
+
   await knex.destroy();
 }
 

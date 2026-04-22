@@ -6,8 +6,10 @@
  *
  *   node scripts/low-hanging-fruit-report.js --account=Chase_CKG
  *   node scripts/low-hanging-fruit-report.js --account=Chase_CKG --account=Chase_VISA
- *   node scripts/low-hanging-fruit-report.js --accounts=Chase_CKG,Chase_VISA,MACU_Dave_Eat_Out
+ *   node scripts/low-hanging-fruit-report.js --accounts=Chase_CKG,Chase_VISA
+ *   node scripts/low-hanging-fruit-report.js --accounts=all
  *   node scripts/low-hanging-fruit-report.js --from=2015-01-01 --to=2023-01-01 --account=Chase_VISA
+ *   (Omit --account / --accounts → every account in the DB gets a by-account file; empty date scope = all tx.)
  *
  * Date scope: same as normalization-report (--since/--until or --from/--to).
  *
@@ -101,14 +103,44 @@ function differsOnlyByCaseSpace(raw, norm) {
   return r === n;
 }
 
+/** @param {number} v */
+function money(v) {
+  return `$${Number(v).toFixed(2)}`;
+}
+
+/**
+ * Parenthetical from signed amounts: use magnitude (|amount|) for min/max/avg.
+ * 1 distinct magnitude → one figure; 2 → list both; 3+ → min–max and average.
+ * @param {number[]} amounts
+ */
+function formatAmountParenthetical(amounts) {
+  const mags = [];
+  for (const a of amounts) {
+    const n = Number(a);
+    if (!Number.isFinite(n) || n === 0) continue;
+    mags.push(Math.abs(n));
+  }
+  if (mags.length === 0) return '';
+
+  const cent = (x) => Math.round(x * 100) / 100;
+  const uniq = [...new Set(mags.map(cent))].sort((a, b) => a - b);
+  if (uniq.length === 1) return ` (${money(uniq[0])})`;
+  if (uniq.length === 2) return ` (${money(uniq[0])}, ${money(uniq[1])})`;
+  const min = uniq[0];
+  const max = uniq[uniq.length - 1];
+  const avg = mags.reduce((s, x) => s + x, 0) / mags.length;
+  return ` (${money(min)}–${money(max)} avg ${money(avg)})`;
+}
+
 /**
  * Cluster lines: one line per parser label (group raws that already share a norm).
  * @param {string[]} members — raw description strings
  * @param {Map<string, number>} descCounts
  * @param {Map<string, string>} rawToNorm
+ * @param {Map<string, number[]>} [descToAmounts] — raw description → amounts (signed); magnitudes used for display
  * @returns {string[]}
  */
-function formatClusterLines(members, descCounts, rawToNorm) {
+function formatClusterLines(members, descCounts, rawToNorm, descToAmounts) {
   /** @type {Map<string, Array<{ raw: string, cnt: number }>>} */
   const byNorm = new Map();
   for (const raw of members) {
@@ -138,6 +170,16 @@ function formatClusterLines(members, descCounts, rawToNorm) {
     const firstExampleRaw = trunc(sortedEntries[0].raw, 72);
     const hasScrubbed = sortedEntries.some((e) => !differsOnlyByCaseSpace(e.raw, norm));
 
+    /** @type {number[]} */
+    const amtList = [];
+    if (descToAmounts && descToAmounts.size) {
+      for (const e of entries) {
+        const arr = descToAmounts.get(e.raw);
+        if (arr) amtList.push(...arr);
+      }
+    }
+    const amtNote = formatAmountParenthetical(amtList);
+
     let line = `  ×${txSum} ${normDisp}`;
     if (k > 1) {
       line += ` (${k}× normalized from e.g. ${firstExampleRaw})`;
@@ -145,6 +187,7 @@ function formatClusterLines(members, descCounts, rawToNorm) {
       const ex = sortedEntries.find((e) => !differsOnlyByCaseSpace(e.raw, norm)) || sortedEntries[0];
       line += ` (from e.g. ${trunc(ex.raw, 72)})`;
     }
+    line += amtNote;
     lines.push(line);
   }
   return lines;
@@ -242,26 +285,64 @@ class UnionFind {
 }
 
 /**
- * @param {string[]} accountsIdentifiers
- * @param {number} minPairScore
- * @param {number} topPairs
- * @param {number} topClusters
+ * @returns {{ mode: 'all' } | { mode: 'list', ids: string[] }}
+ *   `all` — no --account/--accounts args, or `--accounts=all`.
+ *   `list` with empty ids — user passed flags but no identifiers (error).
  */
-function parseArgsAccounts() {
+function parseAccountSelection() {
+  const csv = getArg('accounts');
+  if (csv && csv.trim().toLowerCase() === 'all') {
+    return { mode: 'all' };
+  }
   const list = [];
   const multi = process.argv.filter((a) => a.startsWith('--account='));
   for (const a of multi) {
     const v = a.split('=').slice(1).join('=').trim();
     if (v) list.push(v);
   }
-  const csv = getArg('accounts');
   if (csv) {
     for (const x of csv.split(',')) {
       const t = x.trim();
-      if (t) list.push(t);
+      if (t && t.toLowerCase() !== 'all') list.push(t);
     }
   }
-  return list;
+  if (list.length > 0) return { mode: 'list', ids: list };
+
+  const anyAccountFlag = process.argv.some(
+    (a) => a.startsWith('--account=') || a.startsWith('--accounts=')
+  );
+  if (anyAccountFlag) {
+    return { mode: 'list', ids: [] };
+  }
+  return { mode: 'all' };
+}
+
+/**
+ * Omit accounts with zero transactions in scope (no summary line, no by-account file).
+ * Unknown identifiers are kept so the main loop can still emit “account not found”.
+ *
+ * @param {import('knex').Knex} knex
+ * @param {string[]} identifiers
+ * @param {null | { min: string, max: string | null }} dateScope
+ */
+async function identifiersWithTransactionsInScope(knex, identifiers, dateScope) {
+  const out = [];
+  for (const ident of identifiers) {
+    const acc = await knex('accounts').select('id').where({ identifier: ident }).first();
+    if (!acc) {
+      out.push(ident);
+      continue;
+    }
+    let q = knex('transactions').where({ account_id: acc.id });
+    if (dateScope) {
+      q = q.where('date', '>=', dateScope.min);
+      if (dateScope.max) q = q.andWhere('date', '<=', dateScope.max);
+    }
+    const row = await q.select(knex.raw('count(*) as cnt')).first();
+    const n = Number(row?.cnt ?? 0);
+    if (n > 0) out.push(ident);
+  }
+  return out;
 }
 
 async function main() {
@@ -280,18 +361,58 @@ async function main() {
   } catch (e) {
     console.error(e.message);
     console.error(
-      'Usage: [--since=YYYY-MM-DD [--until=YYYY-MM-DD] | --after=…]  OR  --from=YYYY-MM-DD --to=YYYY-MM-DD]  AND  --account=Id [--account=…]  OR  --accounts=a,b,c'
+      'Usage: [--since=… [--until=…] | --from=… --to=…]  and  [--account=Id … | --accounts=a,b | --accounts=all]  (omit account flags = all accounts)'
     );
     process.exit(1);
   }
 
-  const accountsIdentifiers = parseArgsAccounts();
-  if (accountsIdentifiers.length === 0) {
-    console.error('Need at least one account: --account=Identifier or --accounts=a,b,c');
+  const knex = getKnex();
+  const sel = parseAccountSelection();
+  /** @type {string[]} */
+  let accountsIdentifiers;
+  if (sel.mode === 'all') {
+    const rows = await knex('accounts').select('identifier').orderBy('identifier');
+    accountsIdentifiers = rows.map((r) => r.identifier);
+    if (accountsIdentifiers.length === 0) {
+      console.error('No accounts in database.');
+      process.exit(1);
+    }
+  } else if (sel.ids.length === 0) {
+    console.error(
+      'No account identifiers given. Use --account=Id, --accounts=id1,id2, or --accounts=all (or omit account flags to report every account).'
+    );
     process.exit(1);
+  } else {
+    accountsIdentifiers = sel.ids;
   }
 
-  const knex = getKnex();
+  const idsToProcess = await identifiersWithTransactionsInScope(knex, accountsIdentifiers, dateScope);
+  if (idsToProcess.length === 0) {
+    const dataDir = parentOverride ? path.resolve(parentOverride) : getDataDir();
+    const reportRoot = path.join(dataDir, 'low-hanging-fruit-reports', stampFolderName());
+    fs.mkdirSync(reportRoot, { recursive: true });
+    const dateNote = dateScope ? dateScope.label : 'all dates';
+    const summaryLines = [
+      'MyKnees low-hanging fruit report — SUMMARY',
+      `Generated: ${new Date().toISOString()}`,
+      `Output folder: ${reportRoot}`,
+      `Scope: ${dateNote}`,
+      `Params: min-pair-score≥${minPairScore.toFixed(2)}  top-pairs=${topPairs}  top-clusters=${topClusters}` +
+        (includeSameNorm ? '  include-same-norm=yes' : '  parser-gap-only (norm must differ per pair)'),
+      '',
+      'Nothing to report for this scope.',
+      '',
+    ];
+    fs.writeFileSync(path.join(reportRoot, 'summary.txt'), summaryLines.join('\n') + '\n', 'utf8');
+    fs.writeFileSync(path.join(reportRoot, 'full-report.txt'), summaryLines.join('\n') + '\n', 'utf8');
+    console.error('Wrote:', reportRoot);
+    console.error('  summary.txt   full-report.txt   (no by-account files)');
+    console.error('Scope:', dateNote);
+    console.log(summaryLines.join('\n'));
+    await knex.destroy();
+    return;
+  }
+
   const dataDir = parentOverride ? path.resolve(parentOverride) : getDataDir();
   const reportRoot = path.join(dataDir, 'low-hanging-fruit-reports', stampFolderName());
   const dirAccount = path.join(reportRoot, 'by-account');
@@ -321,11 +442,14 @@ async function main() {
     sum('Default: only pairs where normalized_value already differs — true parser / mapping gaps (not case-only dupes).');
   }
   sum('');
-  sum('── Reports requested ──');
-  for (const id of accountsIdentifiers) sum(`  - ${id}`);
+  sum('── Accounts in this report ──');
+  if (sel.mode === 'all') {
+    sum(`  (${idsToProcess.length} with ≥1 transaction in scope)`);
+  }
+  for (const id of idsToProcess) sum(`  - ${id}`);
   sum('');
 
-  for (const ident of accountsIdentifiers) {
+  for (const ident of idsToProcess) {
     const acc = await knex('accounts').select('id', 'identifier', 'name', 'parse_format_id').where({ identifier: ident }).first();
     if (!acc) {
       sum(`ERROR: account not found: ${ident}`);
@@ -333,7 +457,7 @@ async function main() {
       continue;
     }
 
-    let txq = knex('transactions').where('account_id', acc.id).select('description');
+    let txq = knex('transactions').where('account_id', acc.id).select('description', 'amount');
     if (dateScope) {
       txq = txq.where('date', '>=', dateScope.min);
       if (dateScope.max) txq = txq.andWhere('date', '<=', dateScope.max);
@@ -342,17 +466,18 @@ async function main() {
 
     /** @type {Map<string, number>} */
     const descCounts = new Map();
-    for (const { description } of txRows) {
+    /** @type {Map<string, number[]>} */
+    const descToAmounts = new Map();
+    for (const row of txRows) {
+      const description = row.description;
       descCounts.set(description, (descCounts.get(description) || 0) + 1);
+      if (!descToAmounts.has(description)) descToAmounts.set(description, []);
+      if (row.amount != null && Number.isFinite(Number(row.amount))) {
+        descToAmounts.get(description).push(Number(row.amount));
+      }
     }
 
     if (descCounts.size === 0) {
-      sum(`${ident}: (no transactions in scope)`);
-      fs.writeFileSync(
-        path.join(dirAccount, `${ident}.txt`),
-        `No transactions in scope for ${ident}.\nDate: ${dateNote}\n`,
-        'utf8'
-      );
       continue;
     }
 
@@ -498,6 +623,7 @@ async function main() {
     out('Each ×N line is the normalized_value the system stores now; N = transaction rows hitting that label.');
     out('“(K× normalized from e.g. …)” = K distinct bank descriptions already map to this label; one sample string shown.');
     out('“(from e.g. …)” on a lone line = one bank string scrubbed into this label (digits/punct stripped, etc.).');
+    out('Trailing (…) on each line = |amount| stats for tx rows under that label: one price, two prices, or min–max avg.');
     if (!includeSameNorm) {
       out('Only groups where at least two different parser labels appear (further merge is the work item).');
     } else {
@@ -522,7 +648,7 @@ async function main() {
         out(
           `Cluster ${ci + 1}  (${c.members.length} distinct bank strings, ${normKinds.size} distinct parser norms, ${c.txSum} tx rows, duplicate-tax≈${c.waste}, min pairwise≈${c.minScoreInCluster.toFixed(3)})`
         );
-        for (const cl of formatClusterLines(c.members, descCounts, rawToNorm)) {
+        for (const cl of formatClusterLines(c.members, descCounts, rawToNorm, descToAmounts)) {
           out(cl);
         }
       }
@@ -560,10 +686,12 @@ async function main() {
   const combined = [
     summaryLines.join('\n'),
     '\n\n========== BY-ACCOUNT (concatenated) ==========\n\n',
-    ...accountsIdentifiers.map((id) => {
-      const p = path.join(dirAccount, `${id}.txt`);
-      return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
-    }),
+    ...idsToProcess
+      .map((id) => {
+        const p = path.join(dirAccount, `${id}.txt`);
+        return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+      })
+      .filter((s) => s && s.trim() !== ''),
   ].join('\n');
   fs.writeFileSync(path.join(reportRoot, 'full-report.txt'), combined, 'utf8');
 

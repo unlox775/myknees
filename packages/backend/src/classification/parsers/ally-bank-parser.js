@@ -15,7 +15,35 @@ class AllyBankParser extends BaseParser {
     s = s.replace(/#\d+/g, 'NNN');
     s = s.replace(/~ Future Amount.+$/i, '');
     s = s.replace(/\d+\.\d+/g, 'N.NN');
+    // Ally → Capital One: strip trailing auth-date noise so card vs loan lines bucket reliably
+    s = s.replace(/\bAuthDate\s+[\w-]+\b/gi, '').trim();
     return s.trim();
+  }
+
+  /**
+   * Ally export mixes Capital One **credit card** payments with **auto loan** direct pays.
+   * Reconciliation should use one stable normalized phrase per bucket (see reconciliation patterns).
+   */
+  capitalOnePayeeBucket(scrubbed) {
+    if (typeof scrubbed !== 'string' || !scrubbed) return scrubbed;
+    const u = scrubbed.toUpperCase();
+    if (!u.includes('CAPITAL') || !u.includes('ONE')) return scrubbed;
+    // Auto / installment (not the credit card we reconcile to Capital_One card ledger)
+    if (/\bAUTO\s*DIRECT\s*PAY\b/i.test(u) || /\bAUTO\s*DIRECTPAY\b/i.test(u) || /\bAUTOLOAN\b/i.test(u)) {
+      return 'Capital One auto loan payment';
+    }
+    // Card payments from checking → match credits on the card account
+    if (
+      /\bCRCARDPMT\b/i.test(u) ||
+      /\bCRCARD\b/i.test(u) ||
+      /\bMOBILE\s*PMT\b/i.test(u) ||
+      /\bONLINE\s*PMT\b/i.test(u) ||
+      /\bONLINE\s*PAYMENT\b/i.test(u) ||
+      /\bCARD\s*PMT\b/i.test(u)
+    ) {
+      return 'Capital One card payment';
+    }
+    return scrubbed;
   }
 
   /** LC from Work Tables column C: REGEXREPLACE(REGEXREPLACE(LOWER(D), "(^\s+|[^\s\w/]|\s+$)", ""), "\s+", " ") */
@@ -28,7 +56,9 @@ class AllyBankParser extends BaseParser {
   }
 
   normalize(description) {
-    return this.lc(this.preScrub(description));
+    const scrubbed = this.preScrub(description);
+    const bucketed = this.capitalOnePayeeBucket(scrubbed);
+    return this.lc(bucketed);
   }
 }
 

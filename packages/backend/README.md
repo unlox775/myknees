@@ -47,6 +47,10 @@ make migrate
 | `make xlsx-import-classification` | Import AI classification sheet into classification tables (env: SOURCE, SHEET, COL_*) |
 | `make sql` | Interactive SQL console (history, results truncated at 200 rows) |
 | `make check-csv CSV_FILES="f1.csv f2.csv"` | Check CSV(s) for formula-like cells (=...) |
+| `make import-ai-classification-csv CSV=…/Finance Analysis - AI Classification.csv` | Wide Ally/Capital One/Costco export → `classification_mappings` |
+| `make bucket-report YEAR=2026 MONTH=1` (or `MONTH=January`, or `FROM=`/`TO=`) | Totals by category; omits reconciled transfer pairs; optional `ACCOUNTS=`, `FORMATS=` |
+| `make classification-report` | Coverage: % from DB mappings vs heuristics vs unmapped → `data/classification-reports/<stamp>/` (`SINCE=`/`UNTIL=` or `FROM=`/`TO=` like normalization-report) |
+| `make list-transactions ACCOUNT=Capital_One FROM=2026-01-01 TO=2026-01-31` | Padded columns → stdout; `FORMAT=csv` for CSV; omit date vars for all time; pipe to `less -S` to trim long lines |
 
 ### XLSX → CSV and classification
 
@@ -82,7 +86,7 @@ Schema and design: [docs/architecture.md](docs/architecture.md).
 
 ### Single-pass transaction import
 
-One command with one CSV does **both** classification and transaction rows: (1) extract distinct descriptions, insert into `classification_raw_values`, run the parser, cache in `classification_normalized`; (2) insert transaction rows into the `transactions` table with **day-by-day** dedupe and **transition-day** merge (see below). There is no separate "classification only" step — run `import:transaction-records` with a transaction CSV and it populates everything needed for that file.
+One command with one CSV does **both** classification and transaction rows: (1) extract distinct descriptions, insert into `classification_raw_values`, run the parser, cache in `classification_normalized`; (2) insert transaction rows into the `transactions` table with **day-by-day** dedupe and **transition-day** merge (see below). There is no separate "classification only" step — run `import:transaction-records` with a transaction CSV and it populates everything needed for that file. After inserts, the importer runs **transfer auto-reconciliation** for any active `reconciliation_relationships` that include that account (use `--skip-reconcile` to disable). See [docs/exploded-accounts-and-reconciliation.md](docs/exploded-accounts-and-reconciliation.md).
 
 ### Import flow (run after migrations)
 
@@ -120,6 +124,13 @@ npm run import:transaction-records -- --format=costco_receipts --account=Costco 
 npm run import:mappings -- ally_bank imports/ignore/ally_bank-mappings.csv
 npm run import:mappings -- capital_one imports/ignore/capital_one-mappings.csv
 npm run import:mappings -- costco_receipts imports/ignore/costco_receipts-mappings.csv
+
+# 5. Ally ↔ Capital One transfer reconciliation (optional seed once)
+npm run reconcile:seed-ally-capital-one
+npm run reconcile:patch-ally-c1-patterns   # existing DB: tight Ally↔C1 card-only patterns
+npm run reconcile:status                   # read-only (defaults to all relationships)
+npm run reconcile:transfers -- --all       # attempt new links; human ✓/✗ summary
+npm run reconcile:report                   # on-disk report (defaults to all relationships)
 ```
 
 ### Transaction-record import (into `transactions` table)

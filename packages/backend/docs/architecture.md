@@ -17,6 +17,7 @@ The MyKnees backend stores financial data locally (Mac: `~/.myknees/`) or via a 
   - `imports/ignore/` — optional folder for reference/misc files (e.g., archived spreadsheets). Not processed as imports.
   - `data/` — SQLite database file and any local DB artifacts.
   - `backups/` — rotated backups of `imports` and `data`.
+  - `secrets/` — local-only Plaid tokens and cursors (see [plaid-automatic-import.md](./plaid-automatic-import.md)); never commit these files.
 - **Non-Mac**: The app expects a configured data endpoint (e.g., PostgreSQL connection string). Local `~/.myknees/backend/` is not created; users must configure a remote store.
 
 ## Database Schema
@@ -121,7 +122,7 @@ Lookup: raw → normalized (cached) → category_id from override if present, el
 
 ### Single-pass transaction import (classification + transaction rows)
 
-One command with one CSV does both: (1) classification — distinct descriptions → raw_values + normalized; (2) transaction rows — insert into `transactions` with day-by-day dedupe and transition-day merge. When importing transaction **rows** into the `transactions` table (e.g. from Ally bills CSV):
+One command with one CSV does both: (1) classification — distinct descriptions → raw_values + normalized; (2) transaction rows — insert into `transactions` with day-by-day dedupe and transition-day merge. Unless `--skip-reconcile` is passed, the importer then runs **active transfer reconciliation relationships** that involve the imported account (see [exploded-accounts-and-reconciliation.md](./exploded-accounts-and-reconciliation.md)). When importing transaction **rows** into the `transactions` table (e.g. from Ally bills CSV):
 
 - **No unique key on (date, description, amount)** — you can have multiple identical rows on the same day (e.g. three McDonald's $10.02 on May 5). Dedupe is **day-by-day**: compare counts per (description, amount) in the DB vs the file; insert only the delta on days we're allowed to merge.
 - **Transition day**: A date that is either (a) the last day before a gap (size derived from the import: no gaps → 3; else longest run of consecutive missing days in the import × 3, e.g. 10-day gap → 30) with no transactions (“end” of a range), or (b) the first day after such a gap (“start” of a range). Only these dates may be amended when the import overlaps existing data. Any day with no existing data is always allowed (insert all rows).

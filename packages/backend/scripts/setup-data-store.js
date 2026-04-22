@@ -28,6 +28,7 @@ function main() {
     path.join(mykneesRoot, 'imports', 'ignore'),
     path.join(mykneesRoot, 'data'),
     path.join(mykneesRoot, 'backups'),
+    path.join(mykneesRoot, 'secrets'),
   ];
 
   for (const dir of dirs) {
