@@ -97,6 +97,35 @@ ORDER BY cnt DESC;
 
 ---
 
+## Normalization health report
+
+Per **parse format** and per **account**: how many distinct raw descriptions **collapse** to the same normalized string (merge buckets), **scrub %** (raw ≠ normalized), merge %, tx-weighted merge %, and sample buckets.
+
+```bash
+npm run normalization-report
+npm run normalization-report -- --since=2024-01-01
+npm run normalization-report -- --since=2023-01-01 --until=2025-12-31
+npm run normalization-report -- --from=2024-06-01 --to=2025-06-30
+# or: make normalization-report SINCE=2024-01-01
+#     make normalization-report FROM=2024-01-01 TO=2025-12-31
+```
+
+Creates a **folder** next to the DB, e.g.  
+`~/.myknees/backend/data/normalization-reports/YYYY-MM-DD_HH-mm-ss/` containing:
+
+- **`summary.txt`** — legend (scrub vs merge vs txMerge) + one line per format and per account
+- **`full-report.txt`** — summary plus concatenated per-format detail
+- **`by-format/`** — `ally_bank.txt`, `capital_one.txt`, `costco_receipts.txt` (full detail)
+- **`by-account/`** — `<Identifier>.txt` per account with transactions **in scope**
+
+**Date scope (optional):** only transaction rows with `date` in range; only descriptions that appear in that window; **accounts with zero tx in range are omitted** from the summary and `by-account/`. Use **`--since`** (alias **`--after`**) for “on or after”; optional **`--until`** upper bound; or **`--from`** and **`--to`** together (inclusive).
+
+Parent dir override: `node scripts/normalization-report.js --out=/path/to/custom/data`.
+
+After changing parser code in `src/classification/parsers/`, run **`npm run recompute-normalized`** then regenerate the report.
+
+---
+
 ## Quick row counts
 
 ```sql

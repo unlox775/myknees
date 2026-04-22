@@ -43,9 +43,47 @@ const DEFAULT_GAP_DAYS = 3;
 // CSV column names per format (date, description, amount)
 const FORMAT_COLUMNS = {
   ally_bank: { date: 'Date', description: 'Description', amount: 'Amount' },
+  /** Workbook export uses Line Price; website CSV uses Debit + Credit (positive numbers). */
   capital_one: { date: 'Transaction Date', description: 'Description', amount: 'Line Price' },
   costco_receipts: { date: 'Date', description: 'Product Code', amount: 'Raw price' },
 };
+
+function trimHeader(h) {
+  return String(h || '').trim();
+}
+
+/**
+ * Capital One: accept workbook column Line Price, or website download Debit/Credit.
+ * Amount sign matches existing imports: purchases negative, payments/credits positive (credit − debit).
+ */
+function resolveCapitalOneColumns(header) {
+  const idx = (name) => header.findIndex((h) => trimHeader(h) === name);
+  const dateCol = idx('Transaction Date');
+  const descCol = idx('Description');
+  if (dateCol < 0 || descCol < 0) return null;
+  const linePriceCol = idx('Line Price');
+  if (linePriceCol >= 0) {
+    return { mode: 'line_price', dateCol, descCol, linePriceCol };
+  }
+  const debitCol = idx('Debit');
+  const creditCol = idx('Credit');
+  if (debitCol >= 0 && creditCol >= 0) {
+    return { mode: 'debit_credit', dateCol, descCol, debitCol, creditCol };
+  }
+  return null;
+}
+
+/** @param {ReturnType<typeof resolveCapitalOneColumns>} spec @param {string[]} r */
+function capitalOneRowAmount(spec, r) {
+  if (!spec) return null;
+  if (spec.mode === 'line_price') return parseAmount(r[spec.linePriceCol]);
+  const debit = parseAmount(r[spec.debitCol]);
+  const credit = parseAmount(r[spec.creditCol]);
+  const d = debit != null ? debit : 0;
+  const c = credit != null ? credit : 0;
+  if (d === 0 && c === 0) return null;
+  return c - d;
+}
 
 function parseCsv(content) {
   const rows = [];
@@ -246,19 +284,43 @@ async function main() {
     process.exit(1);
   }
   const header = rows[0];
-  const dateColIdx = header.findIndex((h) => h === cols.date);
-  const descColIdx = header.findIndex((h) => h === cols.description);
-  const amountColIdx = header.findIndex((h) => h === cols.amount);
-  if (dateColIdx < 0 || descColIdx < 0 || amountColIdx < 0) {
-    console.error(
-      'CSV missing columns. Expected:',
-      cols.date,
-      cols.description,
-      cols.amount,
-      'Header:',
-      header.join(', ')
-    );
-    process.exit(1);
+  let dateColIdx;
+  let descColIdx;
+  let amountColIdx = -1;
+  /** @type {ReturnType<typeof resolveCapitalOneColumns>} */
+  let capitalOneSpec = null;
+
+  if (formatId === 'capital_one') {
+    capitalOneSpec = resolveCapitalOneColumns(header);
+    if (!capitalOneSpec) {
+      console.error(
+        'CSV missing Capital One columns. Need Transaction Date + Description + (Line Price or Debit and Credit). Header:',
+        header.join(', ')
+      );
+      process.exit(1);
+    }
+    dateColIdx = capitalOneSpec.dateCol;
+    descColIdx = capitalOneSpec.descCol;
+    if (capitalOneSpec.mode === 'line_price') {
+      console.log('Capital One CSV: using Line Price column');
+    } else {
+      console.log('Capital One CSV: using Debit/Credit columns (amount = credit − debit)');
+    }
+  } else {
+    dateColIdx = header.findIndex((h) => trimHeader(h) === cols.date);
+    descColIdx = header.findIndex((h) => trimHeader(h) === cols.description);
+    amountColIdx = header.findIndex((h) => trimHeader(h) === cols.amount);
+    if (dateColIdx < 0 || descColIdx < 0 || amountColIdx < 0) {
+      console.error(
+        'CSV missing columns. Expected:',
+        cols.date,
+        cols.description,
+        cols.amount,
+        'Header:',
+        header.join(', ')
+      );
+      process.exit(1);
+    }
   }
 
   const ts = nowEpoch();
@@ -276,7 +338,8 @@ async function main() {
       dateStr = excelSerialToDateString(parseFloat(dateStr));
     }
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
-    const amount = parseAmount(r[amountColIdx]);
+    const amount =
+      formatId === 'capital_one' ? capitalOneRowAmount(capitalOneSpec, r) : parseAmount(r[amountColIdx]);
     if (amount == null) continue;
     incoming.push({ date: dateStr, description: desc, amount });
   }
