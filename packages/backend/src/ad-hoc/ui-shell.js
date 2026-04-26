@@ -14,7 +14,13 @@ const NAV_ITEMS = [
   {
     key: 'projection',
     href: '/ad-hoc/projection-forecast',
-    label: 'Projection Forecast',
+    label: 'Projection API Explorer',
+    disabled: false,
+  },
+  {
+    key: 'projection-scenario',
+    href: '/ad-hoc/projection-scenario',
+    label: 'Six-Month Scenario',
     disabled: false,
   },
   {

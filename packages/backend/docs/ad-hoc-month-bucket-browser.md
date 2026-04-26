@@ -1,4 +1,4 @@
-# MyKnees Ad Hoc Browsers (Month Buckets + Category Trends + Projection Forecast)
+# MyKnees Ad Hoc Browsers (Month Buckets + Category Trends + Projection APIs + Six-Month Scenario)
 
 This backend-served ad hoc interface area runs from the backend package and serves both pages and `/api` routes from one local process.
 
@@ -10,12 +10,13 @@ From `packages/backend`:
 AD_HOC_PORT=8791 node scripts/ad-hoc-server.js
 ```
 
-Open either page:
+Open pages:
 
 ```text
 http://127.0.0.1:8791/ad-hoc/month-buckets
 http://127.0.0.1:8791/ad-hoc/category-trends
 http://127.0.0.1:8791/ad-hoc/projection-forecast
+http://127.0.0.1:8791/ad-hoc/projection-scenario
 ```
 
 If you choose a different host or port, set `AD_HOC_HOST` / `AD_HOC_PORT` and use that URL.
@@ -28,10 +29,12 @@ If you choose a different host or port, set `AD_HOC_HOST` / `AD_HOC_PORT` and us
    - `/ad-hoc/category-trends`
 3. Projection profiles + forecast browser (todo-11 foundation)
    - `/ad-hoc/projection-forecast`
+4. Six-month projection scenario interface (todo-12)
+   - `/ad-hoc/projection-scenario`
 
 ## API Endpoints
 
-All endpoints are read-only.
+Most endpoints are read-only. Projection profile updates and scenario forecast requests use POST.
 
 ### Month bucket APIs
 
@@ -173,7 +176,7 @@ GET /api/ad-hoc/projections/inferred-candidates?account=Ally_Bank
 POST /api/ad-hoc/projections/inferred-candidates/refresh?account=Ally_Bank
 ```
 
-6. Generate forecast rows
+6. Generate forecast rows (defaults only)
 
 ```text
 GET /api/ad-hoc/projections/forecast?account=Ally_Bank&start_month=2026-04&months=6
@@ -184,6 +187,64 @@ Returns:
 - `rows[]` with date, profile id/key/name, signed amount, running balance, source note, confidence
 - `month_totals[]` and `totals` summaries
 - `assumptions[]` list for explainability (profile → source mapping)
+
+7. Category monthly defaults from recent actuals (expense categories)
+
+```text
+GET /api/ad-hoc/projections/category-defaults?account=Ally_Bank&forecast_start_month=2026-04&lookback_months=3
+```
+
+Returns:
+- `category_window` with canonical start/end months used for defaults
+- `categories[]` with `category`, `default_monthly_amount`, and signed month totals
+
+8. Generate forecast rows with scenario overrides
+
+```text
+POST /api/ad-hoc/projections/forecast?account=Ally_Bank&start_month=2026-04&months=6
+Content-Type: application/json
+```
+
+Example payload:
+
+```json
+{
+  "scenario_overrides": {
+    "warning_balance_threshold": 500,
+    "anchor_balance_override": 1919.76,
+    "profile_overrides": {
+      "double_oven_event_2026_05_15": {
+        "amount_value": 2300,
+        "start_date": "2026-05-20"
+      },
+      "family_vacation_event_2026_07_01": {
+        "amount_value": 1800
+      },
+      "parent_plus_monthly_start_2026_06": {
+        "amount_value": 100,
+        "start_date": "2026-06-01"
+      },
+      "edward_jones_paused_2026-04-01_52500": {
+        "resume_date": "2026-09-01",
+        "amount_value": 525
+      }
+    },
+    "category_overrides": {
+      "Bills & Utilities": 1200,
+      "Shopping": 350
+    },
+    "category_default_window": {
+      "start_month": "2026-01",
+      "end_month": "2026-03"
+    }
+  }
+}
+```
+
+Response adds:
+- `effective_anchor_balance`
+- `scenario_answer` (survival, lowest balance, warning-threshold row counts)
+- `applied_overrides` (which profile/category overrides were used)
 
 ## Behavior Notes
 
@@ -202,6 +263,20 @@ Returns:
   - Family vacation (`$2,000` around `2026-07-01`)
   - Edward Jones paused transfer templates inferred from historical debits
   - paycheck-linked tithing/fast-offering logic with explicit source notes
+- Six-month scenario page local storage:
+  - key: `myknees.ad_hoc.projection_scenario_inputs.v1`
+  - stores scenario inputs only (no raw transactions)
+  - reset behavior: click `Reset Local Overrides` to clear overrides and return to backend defaults
+- Scenario blank override rule:
+  - blank field means backend default remains active
+  - non-blank field is validated and applied in the forecast request
+  - invalid fields block recalculation and show explicit errors
+
+## Known Limitations
+
+- Scenario overrides are browser-local and are not persisted to projection profile tables.
+- Category overrides apply monthly delta rows (`category_override_adjustment`) rather than rewriting base profile definitions.
+- Six-month scenario UI is ad hoc and does not support named scenarios or multi-user state.
 
 ## Where To Add Future Ad Hoc Pages
 

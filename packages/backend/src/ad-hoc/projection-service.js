@@ -1,11 +1,15 @@
 const { getParser } = require('../classification');
 const { nowEpoch } = require('../db/dates');
 const { resolveFormatIdentifier } = require('../reconciliation/resolve-format');
+const { fetchMonthBucketData } = require('./month-bucket-service');
 
 const DEFAULT_ACCOUNT_IDENTIFIER = 'Ally_Bank';
 const DEFAULT_FORECAST_MONTHS = 6;
 const MAX_FORECAST_MONTHS = 24;
 const MAX_CANDIDATES = 50;
+const DEFAULT_CATEGORY_LOOKBACK_MONTHS = 3;
+const MAX_CATEGORY_LOOKBACK_MONTHS = 24;
+const DEFAULT_LOW_BALANCE_WARNING = 500;
 const SEEDED_ACCOUNTS = new Set();
 
 const SIGN_CONVENTION = {
@@ -1521,7 +1525,563 @@ function summarizeForecastRows(rows) {
     }));
 }
 
-async function generateForecast(knex, searchParams) {
+async function resolveLatestTransactionMonth(knex, accountIdentifier) {
+  const latest = await knex('transactions')
+    .join('accounts', 'accounts.id', 'transactions.account_id')
+    .where('accounts.identifier', accountIdentifier)
+    .max({ max_date: 'transactions.date' })
+    .first();
+
+  if (!latest || !latest.max_date) return null;
+  return monthKeyFromDate(latest.max_date);
+}
+
+function monthWindowFromMonthKey(monthKey) {
+  const parsed = parseMonthKey(monthKey);
+  const from = `${parsed.key}-01`;
+  const to = lastDayOfMonth(parsed.year, parsed.month);
+  return {
+    year: parsed.year,
+    month: parsed.month,
+    from,
+    to,
+    label: `${from} … ${to}`,
+  };
+}
+
+async function resolveCategoryDefaultWindow(knex, accountIdentifier, forecastWindow, windowRequest = {}) {
+  const rawLookback = windowRequest.lookback_months;
+  const lookbackMonths = clamp(
+    Math.floor(asNumber(rawLookback, DEFAULT_CATEGORY_LOOKBACK_MONTHS)),
+    1,
+    MAX_CATEGORY_LOOKBACK_MONTHS
+  );
+
+  const requestedStart = windowRequest.start_month
+    ? parseMonthKey(windowRequest.start_month).key
+    : null;
+  const requestedEnd = windowRequest.end_month ? parseMonthKey(windowRequest.end_month).key : null;
+
+  let startMonth;
+  let endMonth;
+
+  if (requestedStart || requestedEnd) {
+    startMonth = requestedStart || requestedEnd;
+    endMonth = requestedEnd || requestedStart;
+  } else {
+    const latestMonth = await resolveLatestTransactionMonth(knex, accountIdentifier);
+    const referenceMonth = forecastWindow
+      ? shiftMonthKey(forecastWindow.start_month, -1)
+      : latestMonth || toMonthKey(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1);
+
+    if (latestMonth && compareMonthKeys(referenceMonth, latestMonth) > 0) {
+      endMonth = latestMonth;
+    } else {
+      endMonth = referenceMonth;
+    }
+
+    startMonth = shiftMonthKey(endMonth, -(lookbackMonths - 1));
+  }
+
+  if (compareMonthKeys(startMonth, endMonth) > 0) {
+    throw new Error(`Invalid category window: ${startMonth} is after ${endMonth}.`);
+  }
+
+  const monthKeys = enumerateMonthKeys(startMonth, endMonth);
+  const parsedEnd = parseMonthKey(endMonth);
+
+  return {
+    start_month: startMonth,
+    end_month: endMonth,
+    month_count: monthKeys.length,
+    month_keys: monthKeys,
+    from: dateFromMonthKey(startMonth),
+    to: lastDayOfMonth(parsedEnd.year, parsedEnd.month),
+    lookback_months: lookbackMonths,
+  };
+}
+
+async function buildCategoryDefaultsForWindow(knex, categoryWindow) {
+  const monthKeys = categoryWindow.month_keys;
+  const aggregates = new Map();
+
+  for (const monthKey of monthKeys) {
+    const monthWindow = monthWindowFromMonthKey(monthKey);
+    const report = await fetchMonthBucketData(knex, monthWindow, {
+      includeLinked: false,
+    });
+
+    for (const bucket of report.buckets) {
+      if (!aggregates.has(bucket.bucket)) {
+        aggregates.set(bucket.bucket, {
+          category: bucket.bucket,
+          month_totals: new Map(),
+          transaction_count: 0,
+        });
+      }
+
+      const agg = aggregates.get(bucket.bucket);
+      agg.month_totals.set(monthKey, Number(bucket.total_amount) || 0);
+      agg.transaction_count += Number(bucket.transaction_count) || 0;
+    }
+  }
+
+  const categories = [];
+
+  for (const agg of aggregates.values()) {
+    const monthlySignedTotals = monthKeys.map((monthKey) =>
+      round2(agg.month_totals.has(monthKey) ? agg.month_totals.get(monthKey) : 0)
+    );
+    const signedAverage = round2(
+      monthlySignedTotals.reduce((sum, value) => sum + value, 0) / monthKeys.length
+    );
+
+    if (signedAverage >= 0) continue;
+
+    const monthsWithActivity = monthlySignedTotals.filter((value) => value !== 0).length;
+    const defaultMonthlyAmount = round2(Math.abs(signedAverage));
+
+    if (defaultMonthlyAmount <= 0) continue;
+
+    categories.push({
+      category: agg.category,
+      direction: 'expense',
+      default_monthly_amount: defaultMonthlyAmount,
+      average_signed_monthly_total: signedAverage,
+      months_with_activity: monthsWithActivity,
+      transaction_count: agg.transaction_count,
+      month_totals: monthKeys.map((monthKey, index) => ({
+        month_key: monthKey,
+        signed_total: monthlySignedTotals[index],
+      })),
+    });
+  }
+
+  categories.sort((left, right) => {
+    if (right.default_monthly_amount !== left.default_monthly_amount) {
+      return right.default_monthly_amount - left.default_monthly_amount;
+    }
+    return left.category.localeCompare(right.category);
+  });
+
+  return categories;
+}
+
+async function loadCategoryDefaults(knex, accountIdentifier, forecastWindow, windowRequest = {}) {
+  const categoryWindow = await resolveCategoryDefaultWindow(
+    knex,
+    accountIdentifier,
+    forecastWindow,
+    windowRequest
+  );
+  const categories = await buildCategoryDefaultsForWindow(knex, categoryWindow);
+
+  return {
+    account_identifier: accountIdentifier,
+    category_window: categoryWindow,
+    categories,
+  };
+}
+
+async function listProjectionCategoryDefaults(knex, searchParams) {
+  const accountIdentifier = resolveAccountIdentifierFromSearch(searchParams);
+  await ensureProjectionSeedData(knex, accountIdentifier);
+
+  const forecastStartMonth = searchParams.get('forecast_start_month');
+  const forecastParams = new URLSearchParams(searchParams.toString());
+  if (forecastStartMonth) {
+    forecastParams.set('start_month', parseMonthKey(forecastStartMonth).key);
+  }
+  const forecastWindow = resolveForecastWindow(forecastParams);
+
+  const categoryWindowRequest = {
+    start_month: searchParams.get('category_start_month'),
+    end_month: searchParams.get('category_end_month'),
+    lookback_months: searchParams.get('lookback_months'),
+  };
+
+  return loadCategoryDefaults(knex, accountIdentifier, forecastWindow, categoryWindowRequest);
+}
+
+function parseScenarioOverridesFromSearch(searchParams) {
+  let raw = null;
+  const token = searchParams.get('scenario_overrides');
+  if (token && String(token).trim()) {
+    try {
+      raw = JSON.parse(token);
+    } catch (_err) {
+      throw new Error('scenario_overrides must be valid JSON.');
+    }
+  }
+
+  if (raw == null) raw = {};
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('scenario_overrides must be a JSON object.');
+  }
+
+  const anchorBalance = searchParams.get('anchor_balance_override');
+  if (anchorBalance != null && anchorBalance !== '') {
+    raw.anchor_balance_override = anchorBalance;
+  }
+
+  const warningBalance = searchParams.get('warning_balance_threshold');
+  if (warningBalance != null && warningBalance !== '') {
+    raw.warning_balance_threshold = warningBalance;
+  }
+
+  return raw;
+}
+
+function normalizeScenarioOverrides(rawOverrides) {
+  const raw = rawOverrides == null ? {} : rawOverrides;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('scenario_overrides must be a JSON object.');
+  }
+
+  const allowedTopLevel = new Set([
+    'anchor_balance_override',
+    'anchor_balance',
+    'warning_balance_threshold',
+    'low_balance_warning_threshold',
+    'profile_overrides',
+    'category_overrides',
+    'category_default_window',
+    'category_adjustment_day',
+  ]);
+
+  for (const key of Object.keys(raw)) {
+    if (!allowedTopLevel.has(key)) {
+      throw new Error(`Unsupported scenario override field: ${key}`);
+    }
+  }
+
+  const normalized = {
+    anchor_balance_override: null,
+    warning_balance_threshold: DEFAULT_LOW_BALANCE_WARNING,
+    profile_overrides: new Map(),
+    category_overrides: new Map(),
+    category_default_window: null,
+    category_adjustment_day: 28,
+  };
+
+  const anchorValue = raw.anchor_balance_override != null
+    ? raw.anchor_balance_override
+    : raw.anchor_balance;
+  if (anchorValue != null && anchorValue !== '') {
+    const parsed = Number(anchorValue);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error('anchor_balance_override must be a number >= 0.');
+    }
+    normalized.anchor_balance_override = round2(parsed);
+  }
+
+  const warningValue = raw.warning_balance_threshold != null
+    ? raw.warning_balance_threshold
+    : raw.low_balance_warning_threshold;
+  if (warningValue != null && warningValue !== '') {
+    const parsed = Number(warningValue);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error('warning_balance_threshold must be a number >= 0.');
+    }
+    normalized.warning_balance_threshold = round2(parsed);
+  }
+
+  const adjustmentDayValue = raw.category_adjustment_day;
+  if (adjustmentDayValue != null && adjustmentDayValue !== '') {
+    const parsed = Number(adjustmentDayValue);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) {
+      throw new Error('category_adjustment_day must be an integer between 1 and 31.');
+    }
+    normalized.category_adjustment_day = parsed;
+  }
+
+  if (raw.profile_overrides != null) {
+    const profileEntries = [];
+
+    if (Array.isArray(raw.profile_overrides)) {
+      for (const item of raw.profile_overrides) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          throw new Error('Each profile override must be an object.');
+        }
+        const profileKey = String(item.profile_key || '').trim();
+        if (!profileKey) {
+          throw new Error('Each profile override array item must include profile_key.');
+        }
+
+        const fields = { ...item };
+        delete fields.profile_key;
+        profileEntries.push([profileKey, fields]);
+      }
+    } else if (typeof raw.profile_overrides === 'object') {
+      for (const [profileKey, fields] of Object.entries(raw.profile_overrides)) {
+        profileEntries.push([String(profileKey).trim(), fields]);
+      }
+    } else {
+      throw new Error('profile_overrides must be an object map or array.');
+    }
+
+    for (const [profileKey, fields] of profileEntries) {
+      if (!profileKey) continue;
+      if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
+        throw new Error(`Profile override for ${profileKey} must be an object.`);
+      }
+
+      const normalizedFields = {};
+      for (const [fieldKey, fieldValue] of Object.entries(fields)) {
+        const validator = PROFILE_PATCH_VALIDATORS[fieldKey];
+        if (!validator) {
+          throw new Error(
+            `Unsupported profile override field "${fieldKey}" for ${profileKey}.`
+          );
+        }
+        if (fieldValue == null || fieldValue === '') continue;
+        normalizedFields[fieldKey] = validator(fieldValue);
+      }
+
+      if (Object.keys(normalizedFields).length > 0) {
+        normalized.profile_overrides.set(profileKey, normalizedFields);
+      }
+    }
+  }
+
+  if (raw.category_overrides != null) {
+    const categoryEntries = [];
+    if (Array.isArray(raw.category_overrides)) {
+      for (const item of raw.category_overrides) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          throw new Error('Each category override must be an object.');
+        }
+        const category = String(item.category || '').trim();
+        if (!category) {
+          throw new Error('Each category override array item must include category.');
+        }
+        categoryEntries.push([category, item.monthly_amount]);
+      }
+    } else if (typeof raw.category_overrides === 'object') {
+      for (const [category, amount] of Object.entries(raw.category_overrides)) {
+        categoryEntries.push([String(category).trim(), amount]);
+      }
+    } else {
+      throw new Error('category_overrides must be an object map or array.');
+    }
+
+    for (const [category, amountValue] of categoryEntries) {
+      if (!category) continue;
+      if (amountValue == null || amountValue === '') continue;
+      const parsed = Number(amountValue);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error(`Category override for "${category}" must be a number >= 0.`);
+      }
+      normalized.category_overrides.set(category, round2(parsed));
+    }
+  }
+
+  if (raw.category_default_window != null) {
+    if (
+      typeof raw.category_default_window !== 'object' ||
+      Array.isArray(raw.category_default_window)
+    ) {
+      throw new Error('category_default_window must be an object when provided.');
+    }
+
+    const windowRaw = raw.category_default_window;
+    const allowedWindowFields = new Set(['start_month', 'end_month', 'lookback_months']);
+    for (const key of Object.keys(windowRaw)) {
+      if (!allowedWindowFields.has(key)) {
+        throw new Error(`Unsupported category_default_window field: ${key}`);
+      }
+    }
+
+    normalized.category_default_window = {
+      start_month: windowRaw.start_month ? parseMonthKey(windowRaw.start_month).key : null,
+      end_month: windowRaw.end_month ? parseMonthKey(windowRaw.end_month).key : null,
+      lookback_months: windowRaw.lookback_months,
+    };
+  }
+
+  return normalized;
+}
+
+function applyProfileScenarioOverrides(profiles, scenarioOverrides) {
+  const overrides = scenarioOverrides.profile_overrides;
+  const applied = [];
+  if (!overrides.size) {
+    return { effective_profiles: profiles, applied_profile_overrides: applied };
+  }
+
+  const profileByKey = new Map(profiles.map((profile) => [profile.profile_key, profile]));
+  for (const profileKey of overrides.keys()) {
+    if (!profileByKey.has(profileKey)) {
+      throw new Error(`Scenario override references unknown profile: ${profileKey}`);
+    }
+  }
+
+  const effectiveProfiles = profiles.map((profile) => {
+    const profilePatch = overrides.get(profile.profile_key);
+    if (!profilePatch) return profile;
+
+    const patched = { ...profile };
+    for (const [fieldKey, fieldValue] of Object.entries(profilePatch)) {
+      if (fieldKey === 'metadata') {
+        patched.metadata_json = fieldValue;
+      } else {
+        patched[fieldKey] = fieldValue;
+      }
+    }
+
+    if (patched.pattern_type === 'one_time') {
+      if (profilePatch.start_date && !profilePatch.end_date) {
+        patched.end_date = profilePatch.start_date;
+      }
+      if (!patched.end_date) {
+        patched.end_date = patched.start_date;
+      }
+    }
+
+    if (patched.end_date && compareDates(patched.end_date, patched.start_date) < 0) {
+      throw new Error(`Profile override makes end_date earlier than start_date (${profile.profile_key}).`);
+    }
+
+    applied.push({
+      profile_key: profile.profile_key,
+      fields: Object.keys(profilePatch),
+    });
+
+    return patched;
+  });
+
+  return {
+    effective_profiles: effectiveProfiles,
+    applied_profile_overrides: applied,
+  };
+}
+
+async function buildCategoryOverrideEvents(knex, accountIdentifier, forecastWindow, scenarioOverrides) {
+  const applied = [];
+  if (!scenarioOverrides.category_overrides.size) {
+    return {
+      events: [],
+      applied_category_overrides: applied,
+      category_defaults: null,
+    };
+  }
+
+  const windowRequest = scenarioOverrides.category_default_window || {};
+  const defaultsPayload = await loadCategoryDefaults(
+    knex,
+    accountIdentifier,
+    forecastWindow,
+    windowRequest
+  );
+  const defaultsByCategory = new Map(
+    defaultsPayload.categories.map((entry) => [entry.category, entry])
+  );
+
+  const adjustmentDay = scenarioOverrides.category_adjustment_day;
+  const events = [];
+
+  for (const [category, overrideAmount] of scenarioOverrides.category_overrides.entries()) {
+    const defaultEntry = defaultsByCategory.get(category);
+    if (!defaultEntry) {
+      throw new Error(
+        `Category override "${category}" is unavailable in the current default window (${defaultsPayload.category_window.start_month} to ${defaultsPayload.category_window.end_month}).`
+      );
+    }
+
+    const delta = round2(overrideAmount - defaultEntry.default_monthly_amount);
+    applied.push({
+      category,
+      default_monthly_amount: defaultEntry.default_monthly_amount,
+      override_monthly_amount: overrideAmount,
+      monthly_delta: delta,
+    });
+
+    if (Math.abs(delta) < 0.01) continue;
+
+    const profileKey = `category_override_${slugify(category, 42)}`;
+    const profileName = `Category override: ${category}`;
+    const sourceNote = `scenario override ${category}: ${defaultEntry.default_monthly_amount.toFixed(
+      2
+    )} -> ${overrideAmount.toFixed(2)}`;
+    const direction = delta >= 0 ? 'expense' : 'income';
+    const amount = delta >= 0 ? -Math.abs(delta) : Math.abs(delta);
+
+    for (const monthKey of forecastWindow.month_keys) {
+      const date = clampDayInMonth(monthKey, adjustmentDay);
+      events.push({
+        date,
+        profile_id: null,
+        profile_key: profileKey,
+        profile_name: profileName,
+        pattern_type: 'category_monthly_override',
+        direction,
+        amount: round2(amount),
+        amount_abs: round2(Math.abs(amount)),
+        category,
+        source_type: 'scenario_override',
+        source_note: sourceNote,
+        confidence_label: 'high',
+        confidence_score: 1,
+        assumption_note: `Category default window ${defaultsPayload.category_window.start_month} to ${defaultsPayload.category_window.end_month}.`,
+        row_type: 'category_override_adjustment',
+        is_non_cash: false,
+        status: 'scheduled',
+        account_identifier: accountIdentifier,
+      });
+    }
+  }
+
+  return {
+    events,
+    applied_category_overrides: applied,
+    category_defaults: defaultsPayload,
+  };
+}
+
+function summarizeScenarioAnswer(rows, warningBalanceThreshold) {
+  const cashRows = rows.filter((row) => !row.is_non_cash);
+  if (!cashRows.length) {
+    return {
+      warning_balance_threshold: warningBalanceThreshold,
+      survives_forecast_window: true,
+      lowest_balance: null,
+      first_negative_balance: null,
+      low_balance_row_count: 0,
+    };
+  }
+
+  let lowestRow = cashRows[0];
+  for (const row of cashRows) {
+    if (Number(row.running_balance) < Number(lowestRow.running_balance)) {
+      lowestRow = row;
+    }
+  }
+
+  const firstNegative = cashRows.find((row) => Number(row.running_balance) < 0) || null;
+  const lowBalanceRows = cashRows.filter(
+    (row) => Number(row.running_balance) < Number(warningBalanceThreshold)
+  );
+
+  return {
+    warning_balance_threshold: warningBalanceThreshold,
+    survives_forecast_window: !firstNegative,
+    lowest_balance: {
+      date: lowestRow.date,
+      running_balance: round2(lowestRow.running_balance),
+      profile_key: lowestRow.profile_key,
+      profile_name: lowestRow.profile_name,
+    },
+    first_negative_balance: firstNegative
+      ? {
+        date: firstNegative.date,
+        running_balance: round2(firstNegative.running_balance),
+      }
+      : null,
+    low_balance_row_count: lowBalanceRows.length,
+  };
+}
+
+async function generateForecast(knex, searchParams, options = {}) {
   const accountIdentifier = resolveAccountIdentifierFromSearch(searchParams);
   await ensureProjectionSeedData(knex, accountIdentifier);
 
@@ -1539,10 +2099,20 @@ async function generateForecast(knex, searchParams) {
   const profiles = await profileQuery;
   const anchor = await resolveAnchor(knex, accountIdentifier, forecastWindow);
 
-  const nonLinkedProfiles = profiles.filter(
+  const rawScenarioOverrides = options.scenario_overrides != null
+    ? options.scenario_overrides
+    : parseScenarioOverridesFromSearch(searchParams);
+  const scenarioOverrides = normalizeScenarioOverrides(rawScenarioOverrides);
+
+  const {
+    effective_profiles: effectiveProfiles,
+    applied_profile_overrides: appliedProfileOverrides,
+  } = applyProfileScenarioOverrides(profiles, scenarioOverrides);
+
+  const nonLinkedProfiles = effectiveProfiles.filter(
     (profile) => profile.pattern_type !== 'paycheck_linked_percent_plus_monthly'
   );
-  const linkedProfiles = profiles.filter(
+  const linkedProfiles = effectiveProfiles.filter(
     (profile) => profile.pattern_type === 'paycheck_linked_percent_plus_monthly'
   );
 
@@ -1561,6 +2131,18 @@ async function generateForecast(knex, searchParams) {
     events.push(...generated);
   }
 
+  const {
+    events: categoryOverrideEvents,
+    applied_category_overrides: appliedCategoryOverrides,
+    category_defaults: categoryDefaults,
+  } = await buildCategoryOverrideEvents(
+    knex,
+    accountIdentifier,
+    forecastWindow,
+    scenarioOverrides
+  );
+  events.push(...categoryOverrideEvents);
+
   events.sort((left, right) => {
     const byDate = compareDates(left.date, right.date);
     if (byDate !== 0) return byDate;
@@ -1576,7 +2158,12 @@ async function generateForecast(knex, searchParams) {
     return left.profile_name.localeCompare(right.profile_name);
   });
 
-  let runningBalance = Number(anchor ? anchor.anchor_balance : 0);
+  const defaultAnchorBalance = round2(Number(anchor ? anchor.anchor_balance : 0));
+  const effectiveAnchorBalance = scenarioOverrides.anchor_balance_override == null
+    ? defaultAnchorBalance
+    : scenarioOverrides.anchor_balance_override;
+
+  let runningBalance = Number(effectiveAnchorBalance);
 
   const rows = events.map((event) => {
     if (!event.is_non_cash) {
@@ -1621,6 +2208,7 @@ async function generateForecast(knex, searchParams) {
     sign_convention: SIGN_CONVENTION,
     forecast_window: forecastWindow,
     anchor: anchor ? projectionAnchorRowToApi(anchor) : null,
+    effective_anchor_balance: effectiveAnchorBalance,
     totals: {
       income_total: round2(totals.income_total),
       expense_total: round2(totals.expense_total),
@@ -1631,7 +2219,16 @@ async function generateForecast(knex, searchParams) {
     },
     month_totals: summarizeForecastRows(rows),
     rows,
-    assumptions: profiles.map((profile) => ({
+    scenario_answer: summarizeScenarioAnswer(rows, scenarioOverrides.warning_balance_threshold),
+    applied_overrides: {
+      default_anchor_balance: defaultAnchorBalance,
+      anchor_balance_override: scenarioOverrides.anchor_balance_override,
+      warning_balance_threshold: scenarioOverrides.warning_balance_threshold,
+      profile_overrides: appliedProfileOverrides,
+      category_overrides: appliedCategoryOverrides,
+      category_default_window: categoryDefaults ? categoryDefaults.category_window : null,
+    },
+    assumptions: effectiveProfiles.map((profile) => ({
       profile_key: profile.profile_key,
       profile_name: profile.profile_name,
       source_type: profile.source_type,
@@ -1639,6 +2236,7 @@ async function generateForecast(knex, searchParams) {
       confidence_label: profile.confidence_label,
       confidence_score: Number(profile.confidence_score),
       assumption_note: profile.assumption_note,
+      override_applied: scenarioOverrides.profile_overrides.has(profile.profile_key),
     })),
   };
 }
@@ -1757,6 +2355,7 @@ module.exports = {
   ensureProjectionSeedData,
   listProjectionProfiles,
   listProjectionAnchors,
+  listProjectionCategoryDefaults,
   listInferredCandidates,
   refreshInferredCandidates,
   generateForecast,

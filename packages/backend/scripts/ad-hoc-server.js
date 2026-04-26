@@ -17,6 +17,7 @@ const {
   fetchCategoryMonthDetails,
 } = require('../src/ad-hoc/category-trend-service');
 const { renderProjectionPage } = require('../src/ad-hoc/projection-page');
+const { renderProjectionScenarioPage } = require('../src/ad-hoc/projection-scenario-page');
 const {
   listProjectionProfiles,
   listProjectionAnchors,
@@ -24,6 +25,7 @@ const {
   refreshInferredCandidates,
   generateForecast,
   updateProjectionProfile,
+  listProjectionCategoryDefaults,
 } = require('../src/ad-hoc/projection-service');
 
 const HOST = process.env.AD_HOC_HOST || '127.0.0.1';
@@ -35,6 +37,7 @@ const API_CATEGORY_TRENDS_PATH = '/api/ad-hoc/category-trends';
 const API_PROJECTION_PROFILES_PATH = '/api/ad-hoc/projections/profiles';
 const API_PROJECTION_ANCHORS_PATH = '/api/ad-hoc/projections/anchors';
 const API_PROJECTION_FORECAST_PATH = '/api/ad-hoc/projections/forecast';
+const API_PROJECTION_CATEGORY_DEFAULTS_PATH = '/api/ad-hoc/projections/category-defaults';
 const API_PROJECTION_CANDIDATES_PATH = '/api/ad-hoc/projections/inferred-candidates';
 const API_PROJECTION_CANDIDATE_REFRESH_PATH = '/api/ad-hoc/projections/inferred-candidates/refresh';
 
@@ -327,10 +330,59 @@ async function handleProjectionForecastRequest(res, url) {
       sign_convention: payload.sign_convention,
       forecast_window: payload.forecast_window,
       anchor: payload.anchor,
+      effective_anchor_balance: payload.effective_anchor_balance,
       totals: payload.totals,
       month_totals: payload.month_totals,
       rows: payload.rows,
       assumptions: payload.assumptions,
+      scenario_answer: payload.scenario_answer,
+      applied_overrides: payload.applied_overrides,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleProjectionForecastPostRequest(req, res, url) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+    return;
+  }
+
+  try {
+    const payload = await generateForecast(getKnex(), url.searchParams, {
+      scenario_overrides: body.scenario_overrides || body.overrides || body,
+    });
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      sign_convention: payload.sign_convention,
+      forecast_window: payload.forecast_window,
+      anchor: payload.anchor,
+      effective_anchor_balance: payload.effective_anchor_balance,
+      totals: payload.totals,
+      month_totals: payload.month_totals,
+      rows: payload.rows,
+      assumptions: payload.assumptions,
+      scenario_answer: payload.scenario_answer,
+      applied_overrides: payload.applied_overrides,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleProjectionCategoryDefaultsRequest(res, url) {
+  try {
+    const payload = await listProjectionCategoryDefaults(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      category_window: payload.category_window,
+      categories: payload.categories,
     });
   } catch (err) {
     sendJson(res, 400, { ok: false, error: err.message });
@@ -378,6 +430,11 @@ async function requestHandler(req, res) {
   }
 
   if (method === 'POST') {
+    if (pathname === API_PROJECTION_FORECAST_PATH) {
+      await handleProjectionForecastPostRequest(req, res, url);
+      return;
+    }
+
     if (pathname === API_PROJECTION_CANDIDATE_REFRESH_PATH) {
       await handleProjectionCandidateRefreshRequest(res, url);
       return;
@@ -425,6 +482,11 @@ async function requestHandler(req, res) {
     return;
   }
 
+  if (pathname === '/ad-hoc/projection-scenario' || pathname === '/ad-hoc/projection-scenario.html') {
+    sendHtml(res, renderProjectionScenarioPage());
+    return;
+  }
+
   if (pathname.startsWith('/ad-hoc/static/')) {
     serveStaticAsset(res, pathname);
     return;
@@ -452,6 +514,11 @@ async function requestHandler(req, res) {
 
   if (pathname === API_PROJECTION_ANCHORS_PATH) {
     await handleProjectionAnchorsRequest(res, url);
+    return;
+  }
+
+  if (pathname === API_PROJECTION_CATEGORY_DEFAULTS_PATH) {
+    await handleProjectionCategoryDefaultsRequest(res, url);
     return;
   }
 
@@ -493,6 +560,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/month-buckets`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/category-trends`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-forecast`);
+  console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-scenario`);
 });
 
 async function shutdown(signal) {
