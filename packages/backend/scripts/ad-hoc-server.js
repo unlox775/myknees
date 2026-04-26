@@ -16,6 +16,15 @@ const {
   fetchCategoryTrend,
   fetchCategoryMonthDetails,
 } = require('../src/ad-hoc/category-trend-service');
+const { renderProjectionPage } = require('../src/ad-hoc/projection-page');
+const {
+  listProjectionProfiles,
+  listProjectionAnchors,
+  listInferredCandidates,
+  refreshInferredCandidates,
+  generateForecast,
+  updateProjectionProfile,
+} = require('../src/ad-hoc/projection-service');
 
 const HOST = process.env.AD_HOC_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.AD_HOC_PORT || '8791', 10);
@@ -23,6 +32,11 @@ const STATIC_ROOT = path.resolve(__dirname, '..', 'src', 'ad-hoc', 'static');
 const API_SUMMARY_PATH = '/api/ad-hoc/month-buckets';
 const API_CATEGORY_CATALOG_PATH = '/api/ad-hoc/category-trends/categories';
 const API_CATEGORY_TRENDS_PATH = '/api/ad-hoc/category-trends';
+const API_PROJECTION_PROFILES_PATH = '/api/ad-hoc/projections/profiles';
+const API_PROJECTION_ANCHORS_PATH = '/api/ad-hoc/projections/anchors';
+const API_PROJECTION_FORECAST_PATH = '/api/ad-hoc/projections/forecast';
+const API_PROJECTION_CANDIDATES_PATH = '/api/ad-hoc/projections/inferred-candidates';
+const API_PROJECTION_CANDIDATE_REFRESH_PATH = '/api/ad-hoc/projections/inferred-candidates/refresh';
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -43,6 +57,37 @@ function sendHtml(res, html) {
 function sendNotFound(res) {
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('not found');
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  let bytesRead = 0;
+  const maxBytes = 1024 * 1024;
+
+  for await (const chunk of req) {
+    bytesRead += chunk.length;
+    if (bytesRead > maxBytes) {
+      throw new Error('Request body too large (max 1MB).');
+    }
+    chunks.push(chunk);
+  }
+
+  if (!chunks.length) return {};
+  const bodyText = Buffer.concat(chunks).toString('utf8').trim();
+  if (!bodyText) return {};
+
+  let parsed;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch (_err) {
+    throw new Error('Request body must be valid JSON.');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Request body must be a JSON object.');
+  }
+
+  return parsed;
 }
 
 function redirect(res, location) {
@@ -217,12 +262,133 @@ async function handleCategoryMonthDetailRequest(res, encodedCategory, monthKey) 
   }
 }
 
+async function handleProjectionProfilesRequest(res, url) {
+  try {
+    const payload = await listProjectionProfiles(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      sign_convention: payload.sign_convention,
+      profiles: payload.profiles,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleProjectionAnchorsRequest(res, url) {
+  try {
+    const payload = await listProjectionAnchors(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      anchors: payload.anchors,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleProjectionCandidatesRequest(res, url) {
+  try {
+    const payload = await listInferredCandidates(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      candidate_count: payload.candidate_count,
+      candidates: payload.candidates,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleProjectionCandidateRefreshRequest(res, url) {
+  try {
+    const payload = await refreshInferredCandidates(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      inference_window: payload.inference_window,
+      candidate_count: payload.candidate_count,
+      candidates: payload.candidates,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleProjectionForecastRequest(res, url) {
+  try {
+    const payload = await generateForecast(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      sign_convention: payload.sign_convention,
+      forecast_window: payload.forecast_window,
+      anchor: payload.anchor,
+      totals: payload.totals,
+      month_totals: payload.month_totals,
+      rows: payload.rows,
+      assumptions: payload.assumptions,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleProjectionProfileUpdateRequest(req, res, encodedProfileKey) {
+  let profileKey;
+  try {
+    profileKey = decodeURIComponent(encodedProfileKey);
+  } catch (_err) {
+    sendJson(res, 400, { ok: false, error: 'Profile path is not valid URL encoding.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+    return;
+  }
+
+  try {
+    const result = await updateProjectionProfile(getKnex(), profileKey, payload);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: result.account_identifier,
+      profile: result.profile,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
 async function requestHandler(req, res) {
   const method = req.method || 'GET';
   const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
   const pathname = url.pathname;
 
-  if (method !== 'GET') {
+  if (method !== 'GET' && method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('method not allowed');
+    return;
+  }
+
+  if (method === 'POST') {
+    if (pathname === API_PROJECTION_CANDIDATE_REFRESH_PATH) {
+      await handleProjectionCandidateRefreshRequest(res, url);
+      return;
+    }
+
+    const profileUpdateMatch = pathname.match(/^\/api\/ad-hoc\/projections\/profiles\/([^/]+)$/);
+    if (profileUpdateMatch) {
+      await handleProjectionProfileUpdateRequest(req, res, profileUpdateMatch[1]);
+      return;
+    }
+
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('method not allowed');
     return;
@@ -254,6 +420,11 @@ async function requestHandler(req, res) {
     return;
   }
 
+  if (pathname === '/ad-hoc/projection-forecast' || pathname === '/ad-hoc/projection-forecast.html') {
+    sendHtml(res, renderProjectionPage());
+    return;
+  }
+
   if (pathname.startsWith('/ad-hoc/static/')) {
     serveStaticAsset(res, pathname);
     return;
@@ -271,6 +442,26 @@ async function requestHandler(req, res) {
 
   if (pathname === API_CATEGORY_TRENDS_PATH) {
     await handleCategoryTrendRequest(res, url);
+    return;
+  }
+
+  if (pathname === API_PROJECTION_PROFILES_PATH) {
+    await handleProjectionProfilesRequest(res, url);
+    return;
+  }
+
+  if (pathname === API_PROJECTION_ANCHORS_PATH) {
+    await handleProjectionAnchorsRequest(res, url);
+    return;
+  }
+
+  if (pathname === API_PROJECTION_CANDIDATES_PATH) {
+    await handleProjectionCandidatesRequest(res, url);
+    return;
+  }
+
+  if (pathname === API_PROJECTION_FORECAST_PATH) {
+    await handleProjectionForecastRequest(res, url);
     return;
   }
 
@@ -301,6 +492,7 @@ server.listen(PORT, HOST, () => {
   console.log(`MyKnees ad hoc server listening on http://${HOST}:${PORT}`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/month-buckets`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/category-trends`);
+  console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-forecast`);
 });
 
 async function shutdown(signal) {

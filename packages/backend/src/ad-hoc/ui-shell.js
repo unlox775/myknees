@@ -13,9 +13,9 @@ const NAV_ITEMS = [
   },
   {
     key: 'projection',
-    href: '#',
-    label: 'Projection (todo-11/12)',
-    disabled: true,
+    href: '/ad-hoc/projection-forecast',
+    label: 'Projection Forecast',
+    disabled: false,
   },
   {
     key: 'subscriptions',
