@@ -7,9 +7,9 @@ const NAV_ITEMS = [
   },
   {
     key: 'category-trends',
-    href: '#',
-    label: 'Category Trends (todo-10)',
-    disabled: true,
+    href: '/ad-hoc/category-trends',
+    label: 'Category Trends',
+    disabled: false,
   },
   {
     key: 'projection',

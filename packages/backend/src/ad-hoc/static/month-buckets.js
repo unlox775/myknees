@@ -69,9 +69,26 @@
   }
 
   function setCurrentMonthDefaults() {
+    const query = new URLSearchParams(window.location.search || '');
+    const rawYear = query.get('year');
+    const rawMonth = query.get('month');
+
     const now = new Date();
-    yearInput.value = String(now.getFullYear());
-    monthSelect.value = String(now.getMonth() + 1);
+    let year = now.getFullYear();
+    let month = now.getMonth() + 1;
+
+    const parsedYear = parseInt(rawYear, 10);
+    if (Number.isInteger(parsedYear) && parsedYear >= 1970 && parsedYear <= 3000) {
+      year = parsedYear;
+    }
+
+    const parsedMonth = parseInt(rawMonth, 10);
+    if (Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12) {
+      month = parsedMonth;
+    }
+
+    yearInput.value = String(year);
+    monthSelect.value = String(month);
   }
 
   function getSelection() {
