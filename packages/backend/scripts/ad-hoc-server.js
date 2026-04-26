@@ -18,6 +18,7 @@ const {
 } = require('../src/ad-hoc/category-trend-service');
 const { renderProjectionPage } = require('../src/ad-hoc/projection-page');
 const { renderProjectionScenarioPage } = require('../src/ad-hoc/projection-scenario-page');
+const { renderRecurringReviewPage } = require('../src/ad-hoc/recurring-review-page');
 const {
   listProjectionProfiles,
   listProjectionAnchors,
@@ -27,6 +28,10 @@ const {
   updateProjectionProfile,
   listProjectionCategoryDefaults,
 } = require('../src/ad-hoc/projection-service');
+const {
+  listRecurringCandidates,
+  getRecurringCandidateTransactions,
+} = require('../src/ad-hoc/recurring-review-service');
 
 const HOST = process.env.AD_HOC_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.AD_HOC_PORT || '8791', 10);
@@ -40,6 +45,7 @@ const API_PROJECTION_FORECAST_PATH = '/api/ad-hoc/projections/forecast';
 const API_PROJECTION_CATEGORY_DEFAULTS_PATH = '/api/ad-hoc/projections/category-defaults';
 const API_PROJECTION_CANDIDATES_PATH = '/api/ad-hoc/projections/inferred-candidates';
 const API_PROJECTION_CANDIDATE_REFRESH_PATH = '/api/ad-hoc/projections/inferred-candidates/refresh';
+const API_RECURRING_CANDIDATES_PATH = '/api/ad-hoc/recurring-review/candidates';
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -418,6 +424,52 @@ async function handleProjectionProfileUpdateRequest(req, res, encodedProfileKey)
   }
 }
 
+async function handleRecurringCandidatesRequest(res, url) {
+  try {
+    const payload = await listRecurringCandidates(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifiers: payload.account_identifiers,
+      account_selection: payload.account_selection,
+      canonical_window: payload.canonical_window,
+      detection_criteria: payload.detection_criteria,
+      scanned_transaction_count: payload.scanned_transaction_count,
+      skipped_by_format: payload.skipped_by_format,
+      format_filter: payload.format_filter,
+      applied_filters: payload.applied_filters,
+      totals: payload.totals,
+      candidates: payload.candidates,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleRecurringCandidateTransactionsRequest(res, url, encodedCandidateId) {
+  let candidateId;
+  try {
+    candidateId = decodeURIComponent(encodedCandidateId);
+  } catch (_err) {
+    sendJson(res, 400, { ok: false, error: 'Candidate path is not valid URL encoding.' });
+    return;
+  }
+
+  try {
+    const payload = await getRecurringCandidateTransactions(getKnex(), url.searchParams, candidateId);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifiers: payload.account_identifiers,
+      account_selection: payload.account_selection,
+      canonical_window: payload.canonical_window,
+      candidate: payload.candidate,
+      transaction_count: payload.transaction_count,
+      transactions: payload.transactions,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
 async function requestHandler(req, res) {
   const method = req.method || 'GET';
   const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
@@ -487,6 +539,11 @@ async function requestHandler(req, res) {
     return;
   }
 
+  if (pathname === '/ad-hoc/recurring-review' || pathname === '/ad-hoc/recurring-review.html') {
+    sendHtml(res, renderRecurringReviewPage());
+    return;
+  }
+
   if (pathname.startsWith('/ad-hoc/static/')) {
     serveStaticAsset(res, pathname);
     return;
@@ -532,6 +589,11 @@ async function requestHandler(req, res) {
     return;
   }
 
+  if (pathname === API_RECURRING_CANDIDATES_PATH) {
+    await handleRecurringCandidatesRequest(res, url);
+    return;
+  }
+
   const detailMatch = pathname.match(/^\/api\/ad-hoc\/month-buckets\/([^/]+)\/transactions$/);
   if (detailMatch) {
     await handleDetailRequest(res, url, detailMatch[1]);
@@ -543,6 +605,14 @@ async function requestHandler(req, res) {
   );
   if (categoryDetailMatch) {
     await handleCategoryMonthDetailRequest(res, categoryDetailMatch[1], categoryDetailMatch[2]);
+    return;
+  }
+
+  const recurringDetailMatch = pathname.match(
+    /^\/api\/ad-hoc\/recurring-review\/candidates\/([^/]+)\/transactions$/
+  );
+  if (recurringDetailMatch) {
+    await handleRecurringCandidateTransactionsRequest(res, url, recurringDetailMatch[1]);
     return;
   }
 
@@ -561,6 +631,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/category-trends`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-forecast`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-scenario`);
+  console.log(`Open: http://${HOST}:${PORT}/ad-hoc/recurring-review`);
 });
 
 async function shutdown(signal) {

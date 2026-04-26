@@ -1,4 +1,4 @@
-# MyKnees Ad Hoc Browsers (Month Buckets + Category Trends + Projection APIs + Six-Month Scenario)
+# MyKnees Ad Hoc Browsers (Month Buckets + Category Trends + Projection APIs + Six-Month Scenario + Recurring Review)
 
 This backend-served ad hoc interface area runs from the backend package and serves both pages and `/api` routes from one local process.
 
@@ -17,6 +17,7 @@ http://127.0.0.1:8791/ad-hoc/month-buckets
 http://127.0.0.1:8791/ad-hoc/category-trends
 http://127.0.0.1:8791/ad-hoc/projection-forecast
 http://127.0.0.1:8791/ad-hoc/projection-scenario
+http://127.0.0.1:8791/ad-hoc/recurring-review
 ```
 
 If you choose a different host or port, set `AD_HOC_HOST` / `AD_HOC_PORT` and use that URL.
@@ -31,6 +32,8 @@ If you choose a different host or port, set `AD_HOC_HOST` / `AD_HOC_PORT` and us
    - `/ad-hoc/projection-forecast`
 4. Six-month projection scenario interface (todo-12)
    - `/ad-hoc/projection-scenario`
+5. Recurring review + subscription waste detector (todo-13)
+   - `/ad-hoc/recurring-review`
 
 ## API Endpoints
 
@@ -246,6 +249,77 @@ Response adds:
 - `scenario_answer` (survival, lowest balance, warning-threshold row counts)
 - `applied_overrides` (which profile/category overrides were used)
 
+### Recurring review + subscription detector APIs
+
+1. List recurring/subscription candidates
+
+```text
+GET /api/ad-hoc/recurring-review/candidates?accounts=Ally_Bank,Capital_One,Chase_VISA
+GET /api/ad-hoc/recurring-review/candidates?accounts=all&sort=monthly_equivalent_desc&label=discretionary
+```
+
+Returns:
+- `canonical_window` with one canonical cutoff date and 24-month default window metadata
+- `detection_criteria` with cadence thresholds used for classification
+- `totals` with candidate counts and aggregate monthly/annual equivalent totals
+- `candidates[]` with:
+  - `candidate_id`, `display_name`, `normalized_key`
+  - `account_identifiers`, `category`, `category_distribution`
+  - `cadence` (`monthly`, `every-other-month`, `annual`, `low-confidence`)
+  - `confidence` label + score
+  - `essentiality` (`essential`, `discretionary`, `unknown`)
+  - `monthly_equivalent` and `annual_equivalent`
+  - `history[]` month buckets for inline graph rendering
+  - `detail_path` for drilldown transactions
+
+2. Candidate drilldown transactions
+
+```text
+GET /api/ad-hoc/recurring-review/candidates/:candidate_id/transactions?accounts=Ally_Bank,Capital_One,Chase_VISA
+```
+
+Returns:
+- candidate summary metadata
+- `transactions[]` rows with date, account, amount, category, raw description, normalized description, and tx id
+
+#### Detection thresholds used for todo-13
+
+- Canonical analysis window: last 24 months ending at latest transaction date for selected accounts.
+- Monthly candidate:
+  - at least 3 active months
+  - dominant month spacing 1
+  - spacing regularity >= 0.45
+  - average transactions per active month <= 2.2
+- Every-other-month candidate:
+  - at least 3 active months
+  - dominant month spacing 2
+  - spacing regularity >= 0.45
+  - average transactions per active month <= 2.2
+- Annual candidate:
+  - at least 2 active months
+  - dominant spacing in the 10-14 month range
+  - spacing regularity >= 0.50
+  - span >= 11 months
+  - average transactions per active month <= 1.4
+- Low-confidence pattern:
+  - at least 4 active months
+  - spacing regularity >= 0.35
+  - amount coefficient of variation <= 0.95
+  - average transactions per active month <= 1.8
+- Additional confidence guardrail:
+  - annual two-point matches that are neither essential nor subscription-like are forced to low confidence to reduce false-positive cancellation suggestions.
+
+#### Savings math shown in the recurring review UI
+
+- Default state: every candidate starts as kept/checked.
+- Annual equivalent estimate:
+  - `median(active-month total) * (12 / cadence_interval_months)`
+- Monthly equivalent estimate:
+  - `annual_equivalent / 12`
+- Potential savings totals:
+  - sum of monthly/annual equivalents for currently unchecked candidates.
+- Savings totals are hypothetical planning values and should be interpreted with essential/discretionary/unknown labels.
+
 ## Behavior Notes
 
 - API classification and transfer exclusion follow the same logic used by `scripts/bucket-report.js`.
@@ -256,6 +330,9 @@ Response adds:
 - Category trend responses flag partial latest months when the latest transaction date is before month end.
 - Month-bucket page accepts optional query params for category-trend pivots:
   - `/ad-hoc/month-buckets?year=2026&month=4`
+- Recurring review exposes label-aware sorting/filtering for fast triage:
+  - `sort=confidence_desc|monthly_equivalent_desc|annual_equivalent_desc|subscriptions_first|annual_first|essential_first`
+  - `label=essential|discretionary|unknown|subscription|annual|every-other-month|low-confidence`
 - Projection seed facts included by default for `Ally_Bank`:
   - April 2026 anchor (`$1,919.76` after first April transaction)
   - Parent PLUS (`$100/month` from `2026-06-01`)

@@ -25,9 +25,9 @@ const NAV_ITEMS = [
   },
   {
     key: 'subscriptions',
-    href: '#',
-    label: 'Subscriptions (todo-13)',
-    disabled: true,
+    href: '/ad-hoc/recurring-review',
+    label: 'Recurring Review',
+    disabled: false,
   },
 ];
 
