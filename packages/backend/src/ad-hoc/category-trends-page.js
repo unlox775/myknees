@@ -69,6 +69,8 @@ function renderCategoryTrendsPage() {
             <th scope="col">Account</th>
             <th scope="col" class="numeric">Amount</th>
             <th scope="col">Normalized Description</th>
+            <th scope="col">Default Rule Category</th>
+            <th scope="col">Override Category</th>
             <th scope="col" class="numeric">Tx ID</th>
           </tr>
         </thead>
@@ -82,6 +84,7 @@ function renderCategoryTrendsPage() {
     title: 'MyKnees - Category Trends',
     activeNavKey: 'category-trends',
     bodyHtml,
+    extraScriptPaths: ['/ad-hoc/static/transaction-category-editor.js'],
     scriptPath: '/ad-hoc/static/category-trends.js',
   });
 }

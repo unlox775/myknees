@@ -29,8 +29,33 @@
 
   const detailSelectedEl = document.getElementById('detail-selected-bucket');
   const detailBody = document.getElementById('detail-table-body');
+  const categoryEditor = window.MykneesTransactionCategoryEditor;
 
+  const storageKey = 'myknees.ad_hoc.month_buckets_state.v1';
   let currentWindow = null;
+  let currentDetailBucket = null;
+  let currentDetailRows = [];
+  let categoryOptions = [];
+
+  function loadSavedState() {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  function saveState(patch) {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify({
+        ...loadSavedState(),
+        ...patch,
+      }));
+    } catch (_err) {
+      // Local storage is a convenience only; the page should keep working without it.
+    }
+  }
 
   function setStatus(text, type) {
     statusEl.textContent = text;
@@ -73,9 +98,10 @@
     const rawYear = query.get('year');
     const rawMonth = query.get('month');
 
+    const saved = loadSavedState();
     const now = new Date();
-    let year = now.getFullYear();
-    let month = now.getMonth() + 1;
+    let year = Number.isInteger(saved.year) ? saved.year : now.getFullYear();
+    let month = Number.isInteger(saved.month) ? saved.month : now.getMonth() + 1;
 
     const parsedYear = parseInt(rawYear, 10);
     if (Number.isInteger(parsedYear) && parsedYear >= 1970 && parsedYear <= 3000) {
@@ -115,12 +141,14 @@
   }
 
   function clearDetails() {
+    currentDetailBucket = null;
+    currentDetailRows = [];
     detailSelectedEl.textContent = 'No bucket selected.';
-    renderEmptyRow(detailBody, 5, 'Select a bucket in the summary table.');
+    renderEmptyRow(detailBody, 7, 'Select a bucket in the summary table.');
   }
 
-  async function fetchJson(url) {
-    const response = await fetch(url);
+  async function fetchJson(url, options) {
+    const response = await fetch(url, options);
     const text = await response.text();
 
     let parsed = null;
@@ -140,7 +168,7 @@
     return parsed;
   }
 
-  function renderSummary(payload) {
+  function renderSummary(payload, options = {}) {
     const buckets = Array.isArray(payload.buckets) ? payload.buckets : [];
     currentWindow = payload.window;
 
@@ -148,7 +176,7 @@
 
     if (!buckets.length) {
       renderEmptyRow(summaryBody, 3, 'No transactions found in this month.');
-      clearDetails();
+      if (!options.preserveDetails) clearDetails();
       return;
     }
 
@@ -188,16 +216,34 @@
       summaryBody.appendChild(row);
     }
 
-    clearDetails();
+    if (!options.preserveDetails) clearDetails();
+  }
+
+  function buildCategorySelect(rowData) {
+    return categoryEditor.buildCategorySelect({
+      rowData,
+      categoryOptions,
+      ariaLabel: `Override bucket for transaction ${rowData.transaction_id}`,
+      onChange: (selectEl) => {
+        saveCategoryOverride(rowData, selectEl);
+      },
+    });
+  }
+
+  function rowMovedOutOfCurrentView(rowData) {
+    return currentDetailBucket && (rowData.effective_category || rowData.bucket) !== currentDetailBucket;
   }
 
   function renderDetail(payload) {
-    const rows = Array.isArray(payload.transactions) ? payload.transactions : [];
+    const rows = Array.isArray(payload.transactions) ? payload.transactions : currentDetailRows;
+    if (Array.isArray(payload.category_options)) categoryOptions = payload.category_options;
+    currentDetailBucket = payload.bucket || currentDetailBucket;
+    currentDetailRows = rows;
 
     detailSelectedEl.textContent = `${payload.bucket}: ${payload.transaction_count} transactions (net ${formatAmount(payload.total_amount)}).`;
 
     if (!rows.length) {
-      renderEmptyRow(detailBody, 5, 'No transactions found for this bucket in the selected month.');
+      renderEmptyRow(detailBody, 7, 'No transactions found for this bucket in the selected month.');
       return;
     }
 
@@ -205,6 +251,10 @@
 
     for (const rowData of rows) {
       const row = document.createElement('tr');
+      row.className = rowMovedOutOfCurrentView(rowData) ? 'transaction-moved-row' : '';
+      if (rowMovedOutOfCurrentView(rowData)) {
+        row.title = 'This saved edit moved the transaction out of the currently loaded detail view. Reload or navigate back to hide it.';
+      }
 
       const dateCell = document.createElement('td');
       dateCell.textContent = rowData.date;
@@ -222,6 +272,12 @@
       normalizedCell.textContent = rowData.normalized_description || '';
       normalizedCell.title = rowData.raw_description || '';
 
+      const defaultCategoryCell = document.createElement('td');
+      defaultCategoryCell.textContent = categoryEditor.defaultRuleCategory(rowData);
+
+      const overrideCell = document.createElement('td');
+      overrideCell.appendChild(buildCategorySelect(rowData));
+
       const idCell = document.createElement('td');
       idCell.className = 'numeric';
       idCell.textContent = String(rowData.transaction_id);
@@ -230,9 +286,52 @@
       row.appendChild(accountCell);
       row.appendChild(amountCell);
       row.appendChild(normalizedCell);
+      row.appendChild(defaultCategoryCell);
+      row.appendChild(overrideCell);
       row.appendChild(idCell);
 
       detailBody.appendChild(row);
+    }
+  }
+
+  async function refreshMonthSummaryPreservingDetail() {
+    if (!currentWindow) return;
+    const payload = await fetchJson(`/api/ad-hoc/month-buckets?year=${currentWindow.year}&month=${currentWindow.month}`);
+    renderSummary(payload, { preserveDetails: true });
+  }
+
+  async function saveCategoryOverride(rowData, selectEl) {
+    const previousValue = categoryEditor.currentCategoryValue(rowData);
+    selectEl.disabled = true;
+    setStatus(`Saving category for transaction ${rowData.transaction_id}...`);
+
+    try {
+      const payload = await fetchJson(
+        `/api/ad-hoc/transactions/${encodeURIComponent(rowData.transaction_id)}/category-override`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl)),
+        }
+      );
+
+      if (Array.isArray(payload.category_options)) categoryOptions = payload.category_options;
+      categoryEditor.mergeUpdatedTransaction(currentDetailRows, payload.transaction);
+
+      await refreshMonthSummaryPreservingDetail();
+      renderDetail({
+        bucket: currentDetailBucket,
+        transaction_count: currentDetailRows.length,
+        total_amount: categoryEditor.sumAmounts(currentDetailRows),
+        transactions: currentDetailRows,
+        category_options: categoryOptions,
+      });
+      setStatus('Category saved. Summary totals refreshed; striped rows have moved out of this detail view.', 'status-ok');
+    } catch (err) {
+      selectEl.value = previousValue;
+      setStatus(err.message, 'status-error');
+    } finally {
+      selectEl.disabled = false;
     }
   }
 
@@ -251,7 +350,17 @@
     try {
       const payload = await fetchJson(`/api/ad-hoc/month-buckets?year=${selection.year}&month=${selection.month}`);
       renderSummary(payload);
+      saveState({
+        year: selection.year,
+        month: selection.month,
+      });
       setStatus(`${formatMonthYear(payload.window)} loaded. Click a bucket to inspect details.`, 'status-ok');
+
+      const savedBucket = loadSavedState().bucket;
+      const hasSavedBucket = Array.isArray(payload.buckets) && payload.buckets.some((row) => row.bucket === savedBucket);
+      if (hasSavedBucket) {
+        loadBucketDetail(savedBucket);
+      }
     } catch (err) {
       renderEmptyRow(summaryBody, 3, 'Failed to load summary data.');
       clearDetails();
@@ -268,22 +377,29 @@
     }
 
     detailSelectedEl.textContent = `Loading ${bucketName}...`;
-    renderEmptyRow(detailBody, 5, 'Loading bucket detail...');
+    renderEmptyRow(detailBody, 7, 'Loading bucket detail...');
 
     try {
       const encodedBucket = encodeURIComponent(bucketName);
       const url = `/api/ad-hoc/month-buckets/${encodedBucket}/transactions?year=${currentWindow.year}&month=${currentWindow.month}`;
       const payload = await fetchJson(url);
       renderDetail(payload);
+      saveState({ bucket: bucketName });
     } catch (err) {
       detailSelectedEl.textContent = `Failed to load ${bucketName}.`;
-      renderEmptyRow(detailBody, 5, err.message);
+      renderEmptyRow(detailBody, 7, err.message);
     }
   }
 
   loadButton.addEventListener('click', loadMonthSummary);
 
   buildMonthOptions();
+  if (!categoryEditor) {
+    renderEmptyRow(summaryBody, 3, 'Category editor helper failed to load.');
+    renderEmptyRow(detailBody, 7, 'Category editor helper failed to load.');
+    setStatus('Category editor helper failed to load. Refresh this page.', 'status-error');
+    return;
+  }
   setCurrentMonthDefaults();
   renderEmptyRow(summaryBody, 3, 'Loading current month...');
   clearDetails();

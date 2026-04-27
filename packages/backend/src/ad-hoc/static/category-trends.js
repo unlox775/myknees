@@ -19,9 +19,35 @@
   const detailSelectedEl = document.getElementById('trend-detail-selected');
   const detailTableBody = document.getElementById('trend-detail-table-body');
   const pivotLinkEl = document.getElementById('trend-pivot-link');
+  const categoryEditor = window.MykneesTransactionCategoryEditor;
 
+  const storageKey = 'myknees.ad_hoc.category_trends_state.v1';
   let currentRange = null;
   let availableMonths = [];
+  let currentDetailCategory = null;
+  let currentDetailMonth = null;
+  let currentDetailRows = [];
+  let categoryOptions = [];
+
+  function loadSavedState() {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  function saveState(patch) {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify({
+        ...loadSavedState(),
+        ...patch,
+      }));
+    } catch (_err) {
+      // Local storage is only used to remember page controls.
+    }
+  }
 
   function formatAmount(value) {
     return moneyFormat.format(Number(value) || 0);
@@ -52,8 +78,8 @@
     bodyEl.appendChild(row);
   }
 
-  async function fetchJson(url) {
-    const response = await fetch(url);
+  async function fetchJson(url, options) {
+    const response = await fetch(url, options);
     const text = await response.text();
 
     let parsed = null;
@@ -118,12 +144,17 @@
   }
 
   function buildCatalogQueryFromControls() {
-    const preset = presetSelect.value || 'last_12_months';
+    const saved = loadSavedState();
+    const preset = presetSelect.value || saved.preset || 'last_12_months';
     const params = new URLSearchParams();
 
     if (preset === 'custom') {
-      if (startMonthSelect.value) params.set('start_month', startMonthSelect.value);
-      if (endMonthSelect.value) params.set('end_month', endMonthSelect.value);
+      if (startMonthSelect.value || saved.start_month) {
+        params.set('start_month', startMonthSelect.value || saved.start_month);
+      }
+      if (endMonthSelect.value || saved.end_month) {
+        params.set('end_month', endMonthSelect.value || saved.end_month);
+      }
     } else {
       params.set('preset', preset);
     }
@@ -151,12 +182,15 @@
   }
 
   function clearDetail() {
+    currentDetailCategory = null;
+    currentDetailMonth = null;
+    currentDetailRows = [];
     detailSelectedEl.textContent = 'No month selected.';
     pivotLinkEl.href = '/ad-hoc/month-buckets';
-    renderEmptyRow(detailTableBody, 5, 'Select a month in the trend table.');
+    renderEmptyRow(detailTableBody, 7, 'Select a month in the trend table.');
   }
 
-  function renderTrend(payload) {
+  function renderTrend(payload, options = {}) {
     currentRange = payload.range;
 
     const rows = Array.isArray(payload.months) ? payload.months : [];
@@ -169,7 +203,7 @@
 
     if (!rows.length) {
       renderEmptyRow(trendTableBody, 4, 'No months available in the selected range.');
-      clearDetail();
+      if (!options.preserveDetails) clearDetail();
       return;
     }
 
@@ -225,17 +259,38 @@
       trendTableBody.appendChild(row);
     }
 
-    clearDetail();
+    if (!options.preserveDetails) clearDetail();
+  }
+
+  function buildCategorySelect(rowData) {
+    return categoryEditor.buildCategorySelect({
+      rowData,
+      categoryOptions,
+      ariaLabel: `Override category for transaction ${rowData.transaction_id}`,
+      onChange: (selectEl) => {
+        saveCategoryOverride(rowData, selectEl);
+      },
+    });
+  }
+
+  function rowMovedOutOfCurrentView(rowData) {
+    return currentDetailCategory && (rowData.effective_category || rowData.bucket) !== currentDetailCategory;
   }
 
   function renderDetail(payload) {
-    const rows = Array.isArray(payload.transactions) ? payload.transactions : [];
+    const rows = Array.isArray(payload.transactions) ? payload.transactions : currentDetailRows;
+    if (Array.isArray(payload.category_options)) categoryOptions = payload.category_options;
     const monthLabel = payload.window && payload.window.month_label
       ? payload.window.month_label
       : monthLabelByKey(payload.window ? payload.window.month_key : '');
     const categoryLabel = payload.category && payload.category.category_label
       ? payload.category.category_label
       : 'Category';
+    currentDetailCategory = payload.category && payload.category.category_key
+      ? payload.category.category_key
+      : currentDetailCategory;
+    currentDetailMonth = payload.window || currentDetailMonth;
+    currentDetailRows = rows;
 
     const monthSuffix = payload.window && payload.window.is_incomplete_month ? ' (partial)' : '';
     detailSelectedEl.textContent =
@@ -246,7 +301,7 @@
     }
 
     if (!rows.length) {
-      renderEmptyRow(detailTableBody, 5, 'No transactions found for this category in the selected month.');
+      renderEmptyRow(detailTableBody, 7, 'No transactions found for this category in the selected month.');
       return;
     }
 
@@ -254,6 +309,10 @@
 
     for (const rowData of rows) {
       const row = document.createElement('tr');
+      row.className = rowMovedOutOfCurrentView(rowData) ? 'transaction-moved-row' : '';
+      if (rowMovedOutOfCurrentView(rowData)) {
+        row.title = 'This saved edit moved the transaction out of the currently loaded detail view. Reload or navigate back to hide it.';
+      }
 
       const dateCell = document.createElement('td');
       dateCell.textContent = rowData.date || '';
@@ -271,6 +330,12 @@
       normalizedCell.textContent = rowData.normalized_description || '';
       normalizedCell.title = rowData.raw_description || '';
 
+      const defaultCategoryCell = document.createElement('td');
+      defaultCategoryCell.textContent = categoryEditor.defaultRuleCategory(rowData);
+
+      const overrideCell = document.createElement('td');
+      overrideCell.appendChild(buildCategorySelect(rowData));
+
       const idCell = document.createElement('td');
       idCell.className = 'numeric';
       idCell.textContent = String(rowData.transaction_id || '');
@@ -279,22 +344,79 @@
       row.appendChild(accountCell);
       row.appendChild(amountCell);
       row.appendChild(normalizedCell);
+      row.appendChild(defaultCategoryCell);
+      row.appendChild(overrideCell);
       row.appendChild(idCell);
 
       detailTableBody.appendChild(row);
     }
   }
 
+  async function refreshTrendPreservingDetail() {
+    const categoryKey = categorySelect.value;
+    if (!categoryKey || !currentRange || !currentRange.start_month || !currentRange.end_month) return;
+
+    const params = new URLSearchParams();
+    params.set('category', categoryKey);
+    params.set('start_month', currentRange.start_month);
+    params.set('end_month', currentRange.end_month);
+    const payload = await fetchJson(`/api/ad-hoc/category-trends?${params.toString()}`);
+    renderTrend(payload, { preserveDetails: true });
+  }
+
+  async function saveCategoryOverride(rowData, selectEl) {
+    const previousValue = categoryEditor.currentCategoryValue(rowData);
+    selectEl.disabled = true;
+    setStatus(`Saving category for transaction ${rowData.transaction_id}...`);
+
+    try {
+      const payload = await fetchJson(
+        `/api/ad-hoc/transactions/${encodeURIComponent(rowData.transaction_id)}/category-override`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl)),
+        }
+      );
+
+      if (Array.isArray(payload.category_options)) categoryOptions = payload.category_options;
+      categoryEditor.mergeUpdatedTransaction(currentDetailRows, payload.transaction);
+
+      await refreshTrendPreservingDetail();
+      renderDetail({
+        category: {
+          category_key: currentDetailCategory,
+          category_label: currentDetailCategory,
+        },
+        window: currentDetailMonth,
+        transaction_count: currentDetailRows.length,
+        total_amount: categoryEditor.sumAmounts(currentDetailRows),
+        month_bucket_browser_path: currentDetailMonth
+          ? `/ad-hoc/month-buckets?year=${currentDetailMonth.year}&month=${currentDetailMonth.month}`
+          : null,
+        transactions: currentDetailRows,
+        category_options: categoryOptions,
+      });
+      setStatus('Category saved. Trend totals refreshed; striped rows have moved out of this detail view.', 'status-ok');
+    } catch (err) {
+      selectEl.value = previousValue;
+      setStatus(err.message, 'status-error');
+    } finally {
+      selectEl.disabled = false;
+    }
+  }
+
   async function loadMonthDetail(monthRow) {
     detailSelectedEl.textContent = `Loading ${monthRow.month_label} detail...`;
-    renderEmptyRow(detailTableBody, 5, 'Loading detail rows...');
+    renderEmptyRow(detailTableBody, 7, 'Loading detail rows...');
 
     try {
       const payload = await fetchJson(monthRow.detail_path);
       renderDetail(payload);
+      saveState({ detail_month_key: monthRow.month_key });
     } catch (err) {
       detailSelectedEl.textContent = `Failed to load ${monthRow.month_label} detail.`;
-      renderEmptyRow(detailTableBody, 5, err.message);
+      renderEmptyRow(detailTableBody, 7, err.message);
     }
   }
 
@@ -324,6 +446,12 @@
     try {
       const payload = await fetchJson(`/api/ad-hoc/category-trends?${params.toString()}`);
       renderTrend(payload);
+      saveState({
+        preset: presetSelect.value || 'last_12_months',
+        start_month: currentRange.start_month,
+        end_month: currentRange.end_month,
+        category_key: categoryKey,
+      });
       setStatus(
         `Loaded ${payload.category.category_label} for ${monthLabelByKey(payload.range.start_month)} through ${monthLabelByKey(payload.range.end_month)}.`,
         'status-ok'
@@ -372,6 +500,22 @@
       }
 
       await loadTrendForSelectedCategory();
+
+      const savedDetailMonthKey = loadSavedState().detail_month_key;
+      if (savedDetailMonthKey) {
+        const savedMonth = payload.range &&
+          Array.isArray(payload.range.month_keys) &&
+          payload.range.month_keys.includes(savedDetailMonthKey)
+          ? savedDetailMonthKey
+          : null;
+        if (savedMonth) {
+          loadMonthDetail({
+            month_key: savedMonth,
+            month_label: monthLabelByKey(savedMonth),
+            detail_path: `/api/ad-hoc/category-trends/${encodeURIComponent(categorySelect.value)}/months/${savedMonth}/transactions`,
+          });
+        }
+      }
     } catch (err) {
       renderEmptyRow(trendTableBody, 4, 'Failed to load category catalog.');
       clearDetail();
@@ -402,21 +546,41 @@
 
   loadButton.addEventListener('click', () => {
     if (!validateCustomRangeBeforeLoad()) return;
+    saveState({
+      preset: presetSelect.value,
+      start_month: startMonthSelect.value,
+      end_month: endMonthSelect.value,
+      category_key: categorySelect.value,
+    });
     loadCatalogAndTrend({
       preferredCategoryKey: categorySelect.value,
     });
   });
 
   categorySelect.addEventListener('change', () => {
+    saveState({ category_key: categorySelect.value });
     loadTrendForSelectedCategory();
   });
 
   presetSelect.addEventListener('change', () => {
     syncRangeControlsEnabledState();
+    saveState({ preset: presetSelect.value });
   });
 
+  const savedState = loadSavedState();
+  if (savedState.preset) presetSelect.value = savedState.preset;
+  if (savedState.start_month) startMonthSelect.value = savedState.start_month;
+  if (savedState.end_month) endMonthSelect.value = savedState.end_month;
   syncRangeControlsEnabledState();
+  if (!categoryEditor) {
+    renderEmptyRow(trendTableBody, 4, 'Category editor helper failed to load.');
+    renderEmptyRow(detailTableBody, 7, 'Category editor helper failed to load.');
+    setStatus('Category editor helper failed to load. Refresh this page.', 'status-error');
+    return;
+  }
   renderEmptyRow(trendTableBody, 4, 'Loading category trend data...');
   clearDetail();
-  loadCatalogAndTrend();
+  loadCatalogAndTrend({
+    preferredCategoryKey: savedState.category_key,
+  });
 })();

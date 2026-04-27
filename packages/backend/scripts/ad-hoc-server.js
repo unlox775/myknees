@@ -9,6 +9,8 @@ const {
   fetchMonthBucketData,
   getBucketDetails,
 } = require('../src/ad-hoc/month-bucket-service');
+const { fetchAllTransactionsMonthData } = require('../src/ad-hoc/all-transactions-service');
+const { renderTransactionsPage } = require('../src/ad-hoc/transactions-page');
 const { renderMonthBucketsPage } = require('../src/ad-hoc/month-buckets-page');
 const { renderCategoryTrendsPage } = require('../src/ad-hoc/category-trends-page');
 const {
@@ -27,15 +29,21 @@ const {
   generateForecast,
   updateProjectionProfile,
   listProjectionCategoryDefaults,
+  estimateCreditBalanceProjection,
 } = require('../src/ad-hoc/projection-service');
 const {
   listRecurringCandidates,
   getRecurringCandidateTransactions,
 } = require('../src/ad-hoc/recurring-review-service');
+const {
+  listCategoryOptions,
+  updateTransactionCategoryOverride,
+} = require('../src/ad-hoc/transaction-category-service');
 
 const HOST = process.env.AD_HOC_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.AD_HOC_PORT || '8791', 10);
 const STATIC_ROOT = path.resolve(__dirname, '..', 'src', 'ad-hoc', 'static');
+const API_TRANSACTIONS_PATH = '/api/ad-hoc/transactions';
 const API_SUMMARY_PATH = '/api/ad-hoc/month-buckets';
 const API_CATEGORY_CATALOG_PATH = '/api/ad-hoc/category-trends/categories';
 const API_CATEGORY_TRENDS_PATH = '/api/ad-hoc/category-trends';
@@ -43,6 +51,7 @@ const API_PROJECTION_PROFILES_PATH = '/api/ad-hoc/projections/profiles';
 const API_PROJECTION_ANCHORS_PATH = '/api/ad-hoc/projections/anchors';
 const API_PROJECTION_FORECAST_PATH = '/api/ad-hoc/projections/forecast';
 const API_PROJECTION_CATEGORY_DEFAULTS_PATH = '/api/ad-hoc/projections/category-defaults';
+const API_PROJECTION_CREDIT_BALANCE_PATH = '/api/ad-hoc/projections/credit-balance';
 const API_PROJECTION_CANDIDATES_PATH = '/api/ad-hoc/projections/inferred-candidates';
 const API_PROJECTION_CANDIDATE_REFRESH_PATH = '/api/ad-hoc/projections/inferred-candidates/refresh';
 const API_RECURRING_CANDIDATES_PATH = '/api/ad-hoc/recurring-review/candidates';
@@ -164,6 +173,32 @@ async function handleSummaryRequest(res, url) {
   }
 }
 
+async function handleTransactionsRequest(res, url) {
+  try {
+    const payload = await fetchAllTransactionsMonthData(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      window: payload.window,
+      include_linked: payload.include_linked,
+      format_filter: payload.format_filter,
+      scanned_transaction_count: payload.scanned_transaction_count,
+      skipped_by_format: payload.skipped_by_format,
+      linked_target_count: payload.linked_target_count,
+      account_filter: payload.account_filter,
+      selected_account: payload.selected_account,
+      available_accounts: payload.available_accounts,
+      month_transaction_count_all_accounts: payload.month_transaction_count_all_accounts,
+      month_total_amount_all_accounts: payload.month_total_amount_all_accounts,
+      transaction_count: payload.transaction_count,
+      total_amount: payload.total_amount,
+      category_options: await listCategoryOptions(getKnex()),
+      transactions: payload.transactions,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
 async function handleDetailRequest(res, url, encodedBucket) {
   let bucket;
   try {
@@ -192,6 +227,7 @@ async function handleDetailRequest(res, url, encodedBucket) {
       bucket: details.bucket,
       transaction_count: details.transaction_count,
       total_amount: details.total_amount,
+      category_options: await listCategoryOptions(getKnex()),
       transactions: details.transactions,
     });
   } catch (err) {
@@ -264,7 +300,42 @@ async function handleCategoryMonthDetailRequest(res, encodedCategory, monthKey) 
       transaction_count: payload.transaction_count,
       total_amount: payload.total_amount,
       month_bucket_browser_path: payload.month_bucket_browser_path,
+      category_options: await listCategoryOptions(getKnex()),
       transactions: payload.transactions,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleTransactionCategoryOverrideRequest(req, res, encodedTransactionId) {
+  let transactionId;
+  try {
+    transactionId = Number(decodeURIComponent(encodedTransactionId));
+  } catch (_err) {
+    sendJson(res, 400, { ok: false, error: 'Transaction path is not valid URL encoding.' });
+    return;
+  }
+
+  if (!Number.isInteger(transactionId) || transactionId < 1) {
+    sendJson(res, 400, { ok: false, error: 'Transaction id must be a positive integer.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+    return;
+  }
+
+  try {
+    const result = await updateTransactionCategoryOverride(getKnex(), transactionId, payload);
+    sendJson(res, 200, {
+      ok: true,
+      transaction: result.transaction,
+      category_options: result.category_options,
     });
   } catch (err) {
     sendJson(res, 400, { ok: false, error: err.message });
@@ -395,6 +466,29 @@ async function handleProjectionCategoryDefaultsRequest(res, url) {
   }
 }
 
+async function handleProjectionCreditBalanceRequest(res, url) {
+  try {
+    const payload = await estimateCreditBalanceProjection(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      account_identifier: payload.account_identifier,
+      account_name: payload.account_name,
+      account_type: payload.account_type,
+      credit_limit: payload.credit_limit,
+      current_debt_balance: payload.current_debt_balance,
+      signed_transaction_balance: payload.signed_transaction_balance,
+      latest_transaction_date: payload.latest_transaction_date,
+      forecast_window: payload.forecast_window,
+      lookback_window: payload.lookback_window,
+      months: payload.months,
+      limit_crossing_month: payload.limit_crossing_month,
+      source_note: payload.source_note,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
 async function handleProjectionProfileUpdateRequest(req, res, encodedProfileKey) {
   let profileKey;
   try {
@@ -498,6 +592,14 @@ async function requestHandler(req, res) {
       return;
     }
 
+    const transactionCategoryOverrideMatch = pathname.match(
+      /^\/api\/ad-hoc\/transactions\/([^/]+)\/category-override$/
+    );
+    if (transactionCategoryOverrideMatch) {
+      await handleTransactionCategoryOverrideRequest(req, res, transactionCategoryOverrideMatch[1]);
+      return;
+    }
+
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('method not allowed');
     return;
@@ -510,12 +612,17 @@ async function requestHandler(req, res) {
   }
 
   if (pathname === '/') {
-    redirect(res, '/ad-hoc/month-buckets');
+    redirect(res, '/ad-hoc/transactions');
     return;
   }
 
   if (pathname === '/ad-hoc' || pathname === '/ad-hoc/') {
-    redirect(res, '/ad-hoc/month-buckets');
+    redirect(res, '/ad-hoc/transactions');
+    return;
+  }
+
+  if (pathname === '/ad-hoc/transactions' || pathname === '/ad-hoc/transactions.html') {
+    sendHtml(res, renderTransactionsPage());
     return;
   }
 
@@ -554,6 +661,11 @@ async function requestHandler(req, res) {
     return;
   }
 
+  if (pathname === API_TRANSACTIONS_PATH) {
+    await handleTransactionsRequest(res, url);
+    return;
+  }
+
   if (pathname === API_CATEGORY_CATALOG_PATH) {
     await handleCategoryCatalogRequest(res, url);
     return;
@@ -576,6 +688,11 @@ async function requestHandler(req, res) {
 
   if (pathname === API_PROJECTION_CATEGORY_DEFAULTS_PATH) {
     await handleProjectionCategoryDefaultsRequest(res, url);
+    return;
+  }
+
+  if (pathname === API_PROJECTION_CREDIT_BALANCE_PATH) {
+    await handleProjectionCreditBalanceRequest(res, url);
     return;
   }
 
@@ -627,6 +744,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`MyKnees ad hoc server listening on http://${HOST}:${PORT}`);
+  console.log(`Open: http://${HOST}:${PORT}/ad-hoc/transactions`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/month-buckets`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/category-trends`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-forecast`);

@@ -1,5 +1,11 @@
 const NAV_ITEMS = [
   {
+    key: 'transactions',
+    href: '/ad-hoc/transactions',
+    label: 'Transactions',
+    disabled: false,
+  },
+  {
     key: 'month-buckets',
     href: '/ad-hoc/month-buckets',
     label: 'Month Buckets',
@@ -69,7 +75,15 @@ function renderAdHocHeader(activeNavKey) {
 </header>`;
 }
 
-function renderAdHocPage({ title, activeNavKey, bodyHtml, scriptPath }) {
+function renderAdHocPage({ title, activeNavKey, bodyHtml, scriptPath, extraScriptPaths = [] }) {
+  const scriptPaths = [
+    ...(Array.isArray(extraScriptPaths) ? extraScriptPaths : []),
+    scriptPath,
+  ].filter((value) => value && String(value).trim() !== '');
+  const scriptTags = scriptPaths
+    .map((src) => `<script src="${escapeHtml(src)}"></script>`)
+    .join('\n  ');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,7 +95,7 @@ function renderAdHocPage({ title, activeNavKey, bodyHtml, scriptPath }) {
 <body>
   ${renderAdHocHeader(activeNavKey)}
   ${bodyHtml}
-  <script src="${escapeHtml(scriptPath)}"></script>
+  ${scriptTags}
 </body>
 </html>`;
 }

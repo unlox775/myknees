@@ -1,4 +1,4 @@
-# MyKnees Ad Hoc Browsers (Month Buckets + Category Trends + Projection APIs + Six-Month Scenario + Recurring Review)
+# MyKnees Ad Hoc Browsers (Transactions + Month Buckets + Category Trends + Projection APIs + Six-Month Scenario + Recurring Review)
 
 This backend-served ad hoc interface area runs from the backend package and serves both pages and `/api` routes from one local process.
 
@@ -7,12 +7,13 @@ This backend-served ad hoc interface area runs from the backend package and serv
 From `packages/backend`:
 
 ```bash
-AD_HOC_PORT=8791 node scripts/ad-hoc-server.js
+make bounce-service
 ```
 
 Open pages:
 
 ```text
+http://127.0.0.1:8791/ad-hoc/transactions
 http://127.0.0.1:8791/ad-hoc/month-buckets
 http://127.0.0.1:8791/ad-hoc/category-trends
 http://127.0.0.1:8791/ad-hoc/projection-forecast
@@ -22,22 +23,74 @@ http://127.0.0.1:8791/ad-hoc/recurring-review
 
 If you choose a different host or port, set `AD_HOC_HOST` / `AD_HOC_PORT` and use that URL.
 
+Useful service targets:
+
+```bash
+make start-service
+make stop-service
+make bounce-service
+make refresh-service
+make service-status
+```
+
+`bounce-service` and `refresh-service` stop the ad hoc service listening on `AD_HOC_PORT` and start a fresh detached server. Defaults are `AD_HOC_HOST=127.0.0.1`, `AD_HOC_PORT=8791`, and `AD_HOC_LOG=data/ad-hoc-service.log`.
+
 ## Page URLs
 
-1. Month-first bucket browser (todo-09)
+1. General all-transactions browser (todo-14)
+   - `/ad-hoc/transactions`
+2. Month-first bucket browser (todo-09)
    - `/ad-hoc/month-buckets`
-2. Category-first trend browser (todo-10)
+3. Category-first trend browser (todo-10)
    - `/ad-hoc/category-trends`
-3. Projection profiles + forecast browser (todo-11 foundation)
+4. Projection profiles + forecast browser (todo-11 foundation)
    - `/ad-hoc/projection-forecast`
-4. Six-month projection scenario interface (todo-12)
+5. Six-month projection scenario interface (todo-12)
    - `/ad-hoc/projection-scenario`
-5. Recurring review + subscription waste detector (todo-13)
+6. Recurring review + subscription waste detector (todo-13)
    - `/ad-hoc/recurring-review`
 
 ## API Endpoints
 
-Most endpoints are read-only. Projection profile updates and scenario forecast requests use POST.
+Most endpoints are read-only. Projection profile updates, scenario forecast requests, and transaction category overrides use POST.
+
+### All-transactions APIs
+
+1. Monthly transaction list with account filter
+
+```text
+GET /api/ad-hoc/transactions?year=2026&month=4&account=all
+GET /api/ad-hoc/transactions?year=2026&month=4&account=Ally_Bank
+```
+
+Returns:
+- `window` metadata (`year`, `month`, `from`, `to`)
+- `selected_account` and `available_accounts[]` (for account dropdown population)
+- monthly counts/totals for selected account and all accounts
+- `transactions[]` rows sorted chronologically by date then transaction id
+- `category_options` for per-row override dropdowns
+
+Each transaction row includes:
+- `transaction_id`
+- `date`
+- `account_identifier`
+- `account_name`
+- `amount`
+- `effective_category` / `bucket`
+- `default_rule_category`
+- `category_source`
+- `normalized_description`
+- `raw_description`
+- one-time event metadata fields when present
+
+2. Per-row category override write endpoint
+
+```text
+POST /api/ad-hoc/transactions/:transaction_id/category-override
+Content-Type: application/json
+```
+
+This endpoint is shared by Transactions, Month Buckets, and Category Trends.
 
 ### Month bucket APIs
 
@@ -66,8 +119,47 @@ Returns rows with:
 - `account_name`
 - `amount`
 - `bucket`
+- `effective_category`
+- `default_rule_category`
+- `category_source`
+- `rule_source`
 - `normalized_description`
 - `raw_description`
+- `category_options` at the response root for editable override dropdowns
+
+3. Set or clear a transaction category override
+
+```text
+POST /api/ad-hoc/transactions/:transaction_id/category-override
+Content-Type: application/json
+```
+
+Manual override payload:
+
+```json
+{
+  "category": "Eating Out"
+}
+```
+
+One-time event override payload:
+
+```json
+{
+  "category": "One-Time Event",
+  "one_time_event_id": 1
+}
+```
+
+Clear manual override and return to the default rule-based category:
+
+```json
+{
+  "mode": "rule_based"
+}
+```
+
+The response returns the updated transaction row with `effective_category`, `default_rule_category`, `category_source`, `rule_source`, `one_time_event_id`, and event display metadata when present.
 
 ### Category trend APIs
 
@@ -123,6 +215,7 @@ Returns:
 - `total_amount`
 - `month_bucket_browser_path`
 - detail transaction rows (same fields as month bucket detail API)
+- `category_options` at the response root for editable override dropdowns
 
 ### Projection profile + forecast APIs
 
@@ -312,17 +405,32 @@ Returns:
 #### Savings math shown in the recurring review UI
 
 - Default state: every candidate starts as kept/checked.
+- Browser-local recurring review state is saved under `myknees.ad_hoc.recurring_review_state.v1`.
 - Annual equivalent estimate:
   - `median(active-month total) * (12 / cadence_interval_months)`
 - Monthly equivalent estimate:
   - `annual_equivalent / 12`
 - Potential savings totals:
-  - sum of monthly/annual equivalents for currently unchecked candidates.
+  - sum of monthly/annual equivalents for currently unchecked candidates that are still marked as subscription candidates.
+- False positive handling:
+  - clicking `Not a subscription` grays out the row, removes the keep checkbox, and excludes that row from savings math.
+  - clicking `Restore as subscription` brings the row back into the normal keep/uncheck workflow.
 - Savings totals are hypothetical planning values and should be interpreted with essential/discretionary/unknown labels.
 
 ## Behavior Notes
 
 - API classification and transfer exclusion follow the same logic used by `scripts/bucket-report.js`.
+- Manual category edits write `transactions.category` with `category_source=manual_override`; selecting the default rule option clears the override and restores `category_source=rule_based`.
+- Bounded one-time events use a stable top-level bucket plus a numeric event reference:
+  - `transactions.category = "One-Time Event"`
+  - `transactions.one_time_event_id -> one_time_events.id`
+  - the UI renders these as combined dropdown destinations, such as `One-Time Event / 2026 Spring Musical: Once Upon a Mattress`.
+- Detail tables autosave category changes, refresh the summary/trend totals, and keep rows visible with diagonal striping when the edit moves that transaction out of the currently loaded detail view.
+- Transactions page behavior:
+  - month/year/account changes fetch fresh rows from backend
+  - search is case-insensitive and runs client-side only on the loaded rows
+  - searchable fields: date, amount text, normalized/raw description, account, category, and tx id
+  - after a category save, the row updates immediately and the current search filter is reapplied (so rows may disappear if they no longer match the active search)
 - Unknown or uncategorized buckets remain visible; the API does not silently merge category labels.
 - Category trend default range follows canonical cutoff rule:
   - `last_12_months_ending_latest_transaction_month`
@@ -333,6 +441,10 @@ Returns:
 - Recurring review exposes label-aware sorting/filtering for fast triage:
   - `sort=confidence_desc|monthly_equivalent_desc|annual_equivalent_desc|subscriptions_first|annual_first|essential_first`
   - `label=essential|discretionary|unknown|subscription|annual|every-other-month|low-confidence`
+- Recurring review page local storage:
+  - key: `myknees.ad_hoc.recurring_review_state.v1`
+  - stores keep/uncheck choices and false-positive subscription exclusions by candidate id
+  - excluded rows remain visible for audit/reversal, but do not contribute to kept totals or potential savings totals
 - Projection seed facts included by default for `Ally_Bank`:
   - April 2026 anchor (`$1,919.76` after first April transaction)
   - Parent PLUS (`$100/month` from `2026-06-01`)

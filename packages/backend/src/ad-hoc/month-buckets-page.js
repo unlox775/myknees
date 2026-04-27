@@ -55,6 +55,8 @@ function renderMonthBucketsPage() {
             <th scope="col">Account</th>
             <th scope="col" class="numeric">Amount</th>
             <th scope="col">Normalized Description</th>
+            <th scope="col">Default Rule Bucket</th>
+            <th scope="col">Override Bucket</th>
             <th scope="col" class="numeric">Tx ID</th>
           </tr>
         </thead>
@@ -68,6 +70,7 @@ function renderMonthBucketsPage() {
     title: 'MyKnees - Monthly Bucket Browser',
     activeNavKey: 'month-buckets',
     bodyHtml,
+    extraScriptPaths: ['/ad-hoc/static/transaction-category-editor.js'],
     scriptPath: '/ad-hoc/static/month-buckets.js',
   });
 }
