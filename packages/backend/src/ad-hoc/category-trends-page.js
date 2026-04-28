@@ -84,6 +84,7 @@ function renderCategoryTrendsPage() {
     title: 'MyKnees - Category Trends',
     activeNavKey: 'category-trends',
     bodyHtml,
+    extraScriptPaths: ['/ad-hoc/static/transaction-category-editor.js'],
     scriptPath: '/ad-hoc/static/category-trends.js',
   });
 }
