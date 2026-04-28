@@ -94,6 +94,7 @@ class CapitalOneParser extends BaseParser {
     if (/^amazoncom/i.test(t)) return 'amazon purchase';
     if (/^amazon mktpl/i.test(t)) return 'amazon purchase';
     if (/^amazon prime/i.test(t)) return 'amazon prime subscription';
+    if (/^audible(?:com|[a-z0-9]*(?:\s+[a-z0-9]+)*)?$/i.test(t)) return 'audible';
 
     if (/^mcdonalds\b/i.test(t)) return 'mcdonalds';
     if (/^little caesars\b/i.test(t)) return 'little caesars';

@@ -58,7 +58,9 @@ class AllyBankParser extends BaseParser {
   normalize(description) {
     const scrubbed = this.preScrub(description);
     const bucketed = this.capitalOnePayeeBucket(scrubbed);
-    return this.lc(bucketed);
+    const lowered = this.lc(bucketed);
+    if (/^audible(?:com|[a-z0-9]*(?:\s+[a-z0-9]+)*)?$/i.test(lowered)) return 'audible';
+    return lowered;
   }
 }
 

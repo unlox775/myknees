@@ -177,7 +177,16 @@
 
       const notePopover = document.createElement('div');
       notePopover.className = 'transaction-note-popover';
-      notePopover.textContent = notes;
+      const noteText = document.createElement('div');
+      noteText.className = 'transaction-note-popover-note';
+      noteText.textContent = notes;
+      notePopover.appendChild(noteText);
+      if (rowData && rowData.raw_description) {
+        const rawText = document.createElement('div');
+        rawText.className = 'transaction-note-popover-raw';
+        rawText.textContent = `Raw: ${rowData.raw_description}`;
+        notePopover.appendChild(rawText);
+      }
       wrap.appendChild(notePopover);
     }
 
@@ -195,13 +204,6 @@
     }
 
     cell.appendChild(wrap);
-    if (rowData && rowData.raw_description && rowData.raw_description !== rowData.normalized_description) {
-      const raw = document.createElement('div');
-      raw.className = 'raw-description-inline';
-      raw.textContent = `Raw: ${rowData.raw_description}`;
-      cell.appendChild(raw);
-    }
-
     return cell;
   }
 
