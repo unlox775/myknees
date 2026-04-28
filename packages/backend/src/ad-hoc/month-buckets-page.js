@@ -70,7 +70,6 @@ function renderMonthBucketsPage() {
     title: 'MyKnees - Monthly Bucket Browser',
     activeNavKey: 'month-buckets',
     bodyHtml,
-    extraScriptPaths: ['/ad-hoc/static/transaction-category-editor.js'],
     scriptPath: '/ad-hoc/static/month-buckets.js',
   });
 }

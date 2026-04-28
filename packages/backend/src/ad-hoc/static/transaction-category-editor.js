@@ -172,9 +172,13 @@
       const noteIcon = document.createElement('span');
       noteIcon.className = 'transaction-note-icon';
       noteIcon.textContent = 'note';
-      noteIcon.title = notes;
       noteIcon.setAttribute('aria-label', `Transaction note: ${notes}`);
       wrap.appendChild(noteIcon);
+
+      const notePopover = document.createElement('div');
+      notePopover.className = 'transaction-note-popover';
+      notePopover.textContent = notes;
+      wrap.appendChild(notePopover);
     }
 
     if (typeof options.onEditNotes === 'function') {

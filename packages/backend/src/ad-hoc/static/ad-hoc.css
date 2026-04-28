@@ -221,40 +221,69 @@ tbody tr.bucket-row:hover {
   max-width: 34rem;
 }
 
-.category-override-select {
-  min-width: 12rem;
-  max-width: 18rem;
+.transaction-description-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  max-width: 100%;
 }
 
-.category-editor-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  align-items: center;
+.transaction-normalized-description {
+  min-width: 0;
 }
 
-.general-rule-label {
+.transaction-note-icon,
+.transaction-note-edit-button {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-  white-space: nowrap;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1;
 }
 
-.general-rule-checkbox {
-  width: 0.95rem;
-  height: 0.95rem;
+.transaction-note-icon {
+  border: 1px solid #c9a847;
+  color: #735700;
+  background: #fff6cc;
 }
 
-.transaction-moved-row td {
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(25, 85, 165, 0.08) 0,
-    rgba(25, 85, 165, 0.08) 8px,
-    rgba(255, 255, 255, 0.55) 8px,
-    rgba(255, 255, 255, 0.55) 16px
-  );
+.transaction-note-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 50;
+  display: none;
+  width: max-content;
+  max-width: min(32rem, 70vw);
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #b88e18;
+  border-radius: 8px;
+  color: #2f2500;
+  background: #fff9d7;
+  box-shadow: 0 4px 12px rgba(23, 34, 48, 0.18);
+  white-space: normal;
+}
+
+.normalized-cell:hover .transaction-note-popover,
+.normalized-cell:focus-within .transaction-note-popover {
+  display: block;
+}
+
+.transaction-note-edit-button {
+  opacity: 0;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  background: #ffffff;
+}
+
+.normalized-cell:hover .transaction-note-edit-button,
+.transaction-note-edit-button:focus {
+  opacity: 1;
 }
 
 .trend-bar-wrap {
@@ -309,6 +338,100 @@ tbody tr.trend-month-row:hover {
 
 .answer-neutral {
   color: var(--ink-soft);
+}
+
+.balance-projection-panel h2 {
+  margin-bottom: 0.15rem;
+}
+
+.balance-chart-stack {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.balance-chart-card {
+  border: 1px solid #d8e1ee;
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: #fbfdff;
+}
+
+.balance-chart-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.55rem;
+}
+
+.balance-chart-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.balance-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.2rem, 1fr));
+  gap: 0.5rem;
+  min-height: 10rem;
+  padding-top: 0.25rem;
+}
+
+.balance-chart-column {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.balance-chart-value,
+.balance-chart-month {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.balance-chart-value {
+  font-weight: 600;
+}
+
+.balance-bar-track {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  height: 7rem;
+  border: 1px solid #d8e1ee;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(207, 216, 230, 0.45) 1px, transparent 1px) 0 0 / 100% 25%,
+    #f5f8fd;
+  overflow: hidden;
+}
+
+.balance-bar {
+  width: 68%;
+  min-height: 0.3rem;
+  border-radius: 8px 8px 0 0;
+  background: #2f6fb7;
+}
+
+.balance-bar.is-warning {
+  background: #c08320;
+}
+
+.balance-bar.is-danger {
+  background: #a83232;
+}
+
+.balance-chart-empty {
+  grid-column: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  color: var(--ink-soft);
+  text-align: center;
 }
 
 .override-row.override-active {

@@ -228,6 +228,7 @@
       rowData.account_name,
       rowData.normalized_description,
       rowData.raw_description,
+      rowData.notes,
       rowData.effective_category,
       rowData.default_rule_category,
       rowData.bucket,
@@ -330,16 +331,9 @@
       amountCell.className = `numeric ${amountClass(rowData.amount)}`.trim();
       amountCell.textContent = formatAmount(rowData.amount);
 
-      const normalizedCell = document.createElement('td');
-      normalizedCell.className = 'normalized-cell';
-      normalizedCell.textContent = rowData.normalized_description || '';
-      normalizedCell.title = rowData.raw_description || '';
-      if (rowData.raw_description && rowData.raw_description !== rowData.normalized_description) {
-        const raw = document.createElement('div');
-        raw.className = 'raw-description-inline';
-        raw.textContent = `Raw: ${rowData.raw_description}`;
-        normalizedCell.appendChild(raw);
-      }
+      const normalizedCell = categoryEditor.buildNormalizedDescriptionCell(rowData, {
+        onEditNotes: saveTransactionNotes,
+      });
 
       const categoryCell = document.createElement('td');
       categoryCell.appendChild(buildCategoryCell(rowData));
@@ -390,6 +384,25 @@
     saveState({
       search_text: searchInput.value || '',
     });
+  }
+
+  async function saveTransactionNotes(rowData) {
+    setStatus(`Saving note for transaction ${rowData.transaction_id}...`);
+    try {
+      await categoryEditor.saveTransactionNotes(rowData, {
+        onSaved: (updatedTransaction) => {
+          const updated = {
+            ...updatedTransaction,
+            _search_text: buildSearchText(updatedTransaction),
+          };
+          categoryEditor.mergeUpdatedTransaction(currentRows, updated);
+        },
+      });
+      applySearchFilter();
+      setStatus('Transaction note saved.', 'status-ok');
+    } catch (err) {
+      setStatus(err.message, 'status-error');
+    }
   }
 
   async function saveCategoryOverride(rowData, selectEl, options = {}) {

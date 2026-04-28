@@ -331,10 +331,9 @@
       amountCell.className = `numeric ${amountClass(rowData.amount)}`.trim();
       amountCell.textContent = formatAmount(rowData.amount);
 
-      const normalizedCell = document.createElement('td');
-      normalizedCell.className = 'normalized-cell';
-      normalizedCell.textContent = rowData.normalized_description || '';
-      normalizedCell.title = rowData.raw_description || '';
+      const normalizedCell = categoryEditor.buildNormalizedDescriptionCell(rowData, {
+        onEditNotes: saveTransactionNotes,
+      });
 
       const defaultCategoryCell = document.createElement('td');
       defaultCategoryCell.textContent = categoryEditor.defaultRuleCategory(rowData);
@@ -368,6 +367,34 @@
     params.set('end_month', currentRange.end_month);
     const payload = await fetchJson(`/api/ad-hoc/category-trends?${params.toString()}`);
     renderTrend(payload, { preserveDetails: true });
+  }
+
+  async function saveTransactionNotes(rowData) {
+    setStatus(`Saving note for transaction ${rowData.transaction_id}...`);
+    try {
+      await categoryEditor.saveTransactionNotes(rowData, {
+        onSaved: (updated) => {
+          categoryEditor.mergeUpdatedTransaction(currentDetailRows, updated);
+        },
+      });
+      renderDetail({
+        category: {
+          category_key: currentDetailCategory,
+          category_label: currentDetailCategory,
+        },
+        window: currentDetailMonth,
+        transaction_count: currentDetailRows.length,
+        total_amount: categoryEditor.sumAmounts(currentDetailRows),
+        month_bucket_browser_path: currentDetailMonth
+          ? `/ad-hoc/month-buckets?year=${currentDetailMonth.year}&month=${currentDetailMonth.month}`
+          : null,
+        transactions: currentDetailRows,
+        category_options: categoryOptions,
+      });
+      setStatus('Transaction note saved.', 'status-ok');
+    } catch (err) {
+      setStatus(err.message, 'status-error');
+    }
   }
 
   async function saveCategoryOverride(rowData, selectEl, options = {}) {

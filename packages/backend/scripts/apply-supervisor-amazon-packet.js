@@ -10,43 +10,43 @@ const ONE_TIME_EVENT_CATEGORY = 'One-Time Event';
 const DEFAULT_WINDOW_DAYS = 3;
 
 const PACKET = [
-  ['Dave', '2026-04-17', 8.71, 'spring_musical', 'spring musical audio item'],
-  ['Dave', '2026-04-04', 147.10, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-03-31', 91.53, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-03-31', 122.04, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-03-31', 23.97, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-03-31', 47.94, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-03-17', 20.70, 'home_shopping', 'home shopping'],
-  ['Dave', '2026-03-17', 10.89, 'home_shopping', 'home shopping'],
-  ['Dave', '2026-03-14', 16.94, 'groceries', 'groceries'],
-  ['Dave', '2026-03-13', 12.52, 'home_shopping', 'home shopping'],
+  ['Dave', '2026-04-17', 8.71, 'spring_musical', 'audio stuff for the spring musical'],
+  ['Dave', '2026-04-04', 147.10, 'spring_musical', 'spring musical; may include placed/canceled Amazon order activity'],
+  ['Dave', '2026-03-31', 91.53, 'spring_musical', 'spring musical; may include placed/canceled Amazon order activity'],
+  ['Dave', '2026-03-31', 122.04, 'spring_musical', 'spring musical; may include placed/canceled Amazon order activity'],
+  ['Dave', '2026-03-31', 23.97, 'spring_musical', 'spring musical; may include placed/canceled Amazon order activity'],
+  ['Dave', '2026-03-31', 47.94, 'spring_musical', 'spring musical; may include placed/canceled Amazon order activity'],
+  ['Dave', '2026-03-17', 20.70, 'home_shopping', 'shopping / normal home shopping'],
+  ['Dave', '2026-03-17', 10.89, 'home_shopping', 'shopping / normal home shopping'],
+  ['Dave', '2026-03-14', 16.94, 'groceries', 'grocery shopping'],
+  ['Dave', '2026-03-13', 12.52, 'home_shopping', 'shopping; possible duplicate/combined Amazon charge'],
   ['Dave', '2026-03-12', 50.67, 'spring_musical', 'spring musical'],
   ['Dave', '2026-02-26', 27.24, 'home_shopping', 'home shopping'],
-  ['Dave', '2026-02-10', 16.54, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-02-10', 8.27, 'home_repair', 'home (lawnmower fix)'],
-  ['Dave', '2026-02-02', 7.58, 'home_shopping', 'home shopping'],
-  ['Dave', '2026-01-30', 35.96, 'birthday_gifts', 'birthdays/gifts (Charla)'],
-  ['Dave', '2026-01-30', 12.50, 'home_shopping', 'home shopping'],
-  ['Dave', '2026-01-23', 14.45, 'birthday_gifts', 'birthdays (Charla)'],
-  ['Dave', '2026-01-19', 10.88, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-01-12', 10.89, 'spring_musical', 'spring musical'],
-  ['Dave', '2026-01-12', 13.40, 'groceries', 'groceries'],
-  ['Dave', '2026-01-10', 10.89, 'home_shopping', 'home shopping'],
-  ['Dave', '2026-01-09', 23.97, 'home_shopping', 'home shopping'],
-  ['Charla', '2026-04-20', null, 'kids_gifts', 'toy/gift'],
-  ['Charla', '2026-04-03', 7.63, 'spring_musical', 'drama (hot glue sticks)'],
-  ['Charla', '2026-03-26', 64.83, 'home_operations', 'groceries/home operations (printer ink)'],
-  ['Charla', '2026-03-10', 25.62, 'kids_music', 'kids (clarinet reeds)'],
-  ['Charla', '2026-03-10', 34.86, 'spring_musical', 'drama costumes'],
-  ['Charla', '2026-03-09', 14.16, 'spring_musical', 'drama (screen printing ink)'],
-  ['Charla', '2026-03-03', 43.58, 'spring_musical', 'drama (screen printing ink)'],
-  ['Charla', '2026-02-17', 25.62, 'kids_music', 'kids (clarinet reeds)'],
-  ['Charla', '2026-02-11', 25.62, 'kids_music', 'kids (clarinet reeds)'],
-  ['Charla', '2026-02-09', 25.03, 'spring_musical', 'drama supplies'],
-  ['Charla', '2026-01-21', null, 'kids_home', 'cat leash'],
-  ['Charla', '2026-01-20', 59.22, 'birthday_gifts', 'birthdays (Rose)'],
-  ['Charla', '2026-01-07', 16.67, 'groceries', 'groceries (kitchen supply)'],
-  ['Charla', '2026-01-02', 8.71, 'home_utility', 'groceries/home utility (charging cables)'],
+  ['Dave', '2026-02-10', 16.54, 'spring_musical', 'for the play'],
+  ['Dave', '2026-02-10', 8.27, 'home_repair', 'home; fixing the lawnmower'],
+  ['Dave', '2026-02-02', 7.58, 'home_shopping', 'home stuff / shopping'],
+  ['Dave', '2026-01-30', 35.96, 'birthday_gifts', 'birthday gifts for Charla'],
+  ['Dave', '2026-01-30', 12.50, 'home_shopping', 'shopping'],
+  ['Dave', '2026-01-23', 14.45, 'birthday_gifts', 'Charla birthday'],
+  ['Dave', '2026-01-19', 10.88, 'spring_musical', 'drama'],
+  ['Dave', '2026-01-12', 10.89, 'spring_musical', 'drama'],
+  ['Dave', '2026-01-12', 13.40, 'groceries', 'grocery shopping'],
+  ['Dave', '2026-01-10', 10.89, 'home_shopping', 'home shopping stuff'],
+  ['Dave', '2026-01-09', 23.97, 'home_shopping', 'home shopping thing'],
+  ['Charla', '2026-04-20', null, 'kids_gifts', 'kids; toy/gift for someone'],
+  ['Charla', '2026-04-03', 7.63, 'spring_musical', 'hot glue sticks for drama'],
+  ['Charla', '2026-03-26', 64.83, 'home_operations', 'printer ink; groceries/home operations'],
+  ['Charla', '2026-03-10', 25.62, 'kids_music', "reeds for Halley's clarinet"],
+  ['Charla', '2026-03-10', 34.86, 'spring_musical', 'dresses / costumes for drama'],
+  ['Charla', '2026-03-09', 14.16, 'spring_musical', 't-shirt ink for screen printing for drama'],
+  ['Charla', '2026-03-03', 43.58, 'spring_musical', 'ink for drama; t-shirt screen printing'],
+  ['Charla', '2026-02-17', 25.62, 'kids_music', "clarinet reeds; duplicate/repost/return pattern to verify"],
+  ['Charla', '2026-02-11', 25.62, 'kids_music', "clarinet reeds; duplicate/repost/return pattern to verify"],
+  ['Charla', '2026-02-09', 25.03, 'spring_musical', 'stuffing for puppets plus dimple patches / makeup supplies for drama'],
+  ['Charla', '2026-01-21', null, 'kids_home', 'cat leash for kids'],
+  ['Charla', '2026-01-20', 59.22, 'birthday_gifts', "birthday stuff for Rose's birthday"],
+  ['Charla', '2026-01-07', 16.67, 'groceries', 'parchment paper for cooking'],
+  ['Charla', '2026-01-02', 8.71, 'home_utility', 'iPhone charging cables'],
 ].map((row, index) => ({
   packet_id: `P${String(index + 1).padStart(2, '0')}`,
   account_hint: row[0],
@@ -422,22 +422,25 @@ async function applyMatches(knex, matches) {
   const applied = [];
 
   for (const match of matches) {
+    const matchNotes = match.packets.map((packet) => packet.note).filter(Boolean).join('; ');
     for (const tx of match.transactions) {
-      if (tx.category_source === 'manual_override') continue;
-      await knex('transactions')
-        .where({ id: tx.id })
-        .update({
-          category: match.destination.category,
-          subcategory: match.destination.subcategory,
-          one_time_event_id: match.destination.one_time_event_id,
-          category_source: 'manual_override',
-          updated_at: ts,
-        });
+      const values = {
+        notes: matchNotes || null,
+        updated_at: ts,
+      };
+      if (tx.category_source !== 'manual_override') {
+        values.category = match.destination.category;
+        values.subcategory = match.destination.subcategory;
+        values.one_time_event_id = match.destination.one_time_event_id;
+        values.category_source = 'manual_override';
+      }
+      await knex('transactions').where({ id: tx.id }).update(values);
       applied.push({
         transaction_id: tx.id,
         category: match.destination.category,
         subcategory: match.destination.subcategory,
         one_time_event_id: match.destination.one_time_event_id,
+        notes: matchNotes,
       });
     }
   }

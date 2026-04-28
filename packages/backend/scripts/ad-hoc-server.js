@@ -38,7 +38,6 @@ const {
 const {
   listCategoryOptions,
   updateTransactionCategoryOverride,
-  updateTransactionNotes,
 } = require('../src/ad-hoc/transaction-category-service');
 
 const HOST = process.env.AD_HOC_HOST || '127.0.0.1';
@@ -312,39 +311,6 @@ async function handleTransactionCategoryOverrideRequest(req, res, encodedTransac
       transaction: result.transaction,
       category_options: result.category_options,
       rule_result: result.rule_result,
-    });
-  } catch (err) {
-    sendJson(res, 400, { ok: false, error: err.message });
-  }
-}
-
-async function handleTransactionNotesRequest(req, res, encodedTransactionId) {
-  let transactionId;
-  try {
-    transactionId = Number(decodeURIComponent(encodedTransactionId));
-  } catch (_err) {
-    sendJson(res, 400, { ok: false, error: 'Transaction path is not valid URL encoding.' });
-    return;
-  }
-
-  if (!Number.isInteger(transactionId) || transactionId < 1) {
-    sendJson(res, 400, { ok: false, error: 'Transaction id must be a positive integer.' });
-    return;
-  }
-
-  let payload;
-  try {
-    payload = await readJsonBody(req);
-  } catch (err) {
-    sendJson(res, 400, { ok: false, error: err.message });
-    return;
-  }
-
-  try {
-    const result = await updateTransactionNotes(getKnex(), transactionId, payload);
-    sendJson(res, 200, {
-      ok: true,
-      transaction: result.transaction,
     });
   } catch (err) {
     sendJson(res, 400, { ok: false, error: err.message });
@@ -632,14 +598,6 @@ async function requestHandler(req, res) {
     );
     if (transactionCategoryOverrideMatch) {
       await handleTransactionCategoryOverrideRequest(req, res, transactionCategoryOverrideMatch[1]);
-      return;
-    }
-
-    const transactionNotesMatch = pathname.match(
-      /^\/api\/ad-hoc\/transactions\/([^/]+)\/notes$/
-    );
-    if (transactionNotesMatch) {
-      await handleTransactionNotesRequest(req, res, transactionNotesMatch[1]);
       return;
     }
 
