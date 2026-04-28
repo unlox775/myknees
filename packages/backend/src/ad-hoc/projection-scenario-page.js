@@ -37,6 +37,27 @@ function renderProjectionScenarioPage() {
     </p>
   </section>
 
+  <section class="panel balance-projection-panel">
+    <h2>Balance Projection</h2>
+    <p id="scenario-balance-chart-status" class="fine-print">Balance charts loading...</p>
+    <div class="balance-chart-stack" aria-label="Projected account balance charts">
+      <article class="balance-chart-card">
+        <div class="balance-chart-card-header">
+          <h3>Ally Bank Projected Balance</h3>
+          <p id="scenario-ally-balance-summary" class="fine-print">Waiting for forecast...</p>
+        </div>
+        <div id="scenario-ally-balance-chart" class="balance-chart" role="img" aria-label="Ally Bank projected balance by month"></div>
+      </article>
+      <article class="balance-chart-card">
+        <div class="balance-chart-card-header">
+          <h3>Capital One Estimated Balance</h3>
+          <p id="scenario-capital-one-summary" class="fine-print">Waiting for Capital One estimate...</p>
+        </div>
+        <div id="scenario-capital-one-chart" class="balance-chart" role="img" aria-label="Capital One estimated balance by month"></div>
+      </article>
+    </div>
+  </section>
+
   <section class="panel">
     <h2>Scenario Answer</h2>
     <div id="scenario-answer" class="scenario-answer-grid">

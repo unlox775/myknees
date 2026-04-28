@@ -9,8 +9,6 @@ const {
   fetchMonthBucketData,
   getBucketDetails,
 } = require('../src/ad-hoc/month-bucket-service');
-const { fetchAllTransactionsMonthData } = require('../src/ad-hoc/all-transactions-service');
-const { renderTransactionsPage } = require('../src/ad-hoc/transactions-page');
 const { renderMonthBucketsPage } = require('../src/ad-hoc/month-buckets-page');
 const { renderCategoryTrendsPage } = require('../src/ad-hoc/category-trends-page');
 const {
@@ -18,9 +16,11 @@ const {
   fetchCategoryTrend,
   fetchCategoryMonthDetails,
 } = require('../src/ad-hoc/category-trend-service');
+const { fetchAllTransactionsMonthData } = require('../src/ad-hoc/all-transactions-service');
 const { renderProjectionPage } = require('../src/ad-hoc/projection-page');
 const { renderProjectionScenarioPage } = require('../src/ad-hoc/projection-scenario-page');
 const { renderRecurringReviewPage } = require('../src/ad-hoc/recurring-review-page');
+const { renderTransactionsPage } = require('../src/ad-hoc/transactions-page');
 const {
   listProjectionProfiles,
   listProjectionAnchors,
@@ -38,13 +38,14 @@ const {
 const {
   listCategoryOptions,
   updateTransactionCategoryOverride,
+  updateTransactionNotes,
 } = require('../src/ad-hoc/transaction-category-service');
 
 const HOST = process.env.AD_HOC_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.AD_HOC_PORT || '8791', 10);
 const STATIC_ROOT = path.resolve(__dirname, '..', 'src', 'ad-hoc', 'static');
-const API_TRANSACTIONS_PATH = '/api/ad-hoc/transactions';
 const API_SUMMARY_PATH = '/api/ad-hoc/month-buckets';
+const API_TRANSACTIONS_PATH = '/api/ad-hoc/transactions';
 const API_CATEGORY_CATALOG_PATH = '/api/ad-hoc/category-trends/categories';
 const API_CATEGORY_TRENDS_PATH = '/api/ad-hoc/category-trends';
 const API_PROJECTION_PROFILES_PATH = '/api/ad-hoc/projections/profiles';
@@ -170,32 +171,6 @@ async function handleSummaryRequest(res, url) {
     });
   } catch (err) {
     sendJson(res, 500, { ok: false, error: err.message });
-  }
-}
-
-async function handleTransactionsRequest(res, url) {
-  try {
-    const payload = await fetchAllTransactionsMonthData(getKnex(), url.searchParams);
-    sendJson(res, 200, {
-      ok: true,
-      window: payload.window,
-      include_linked: payload.include_linked,
-      format_filter: payload.format_filter,
-      scanned_transaction_count: payload.scanned_transaction_count,
-      skipped_by_format: payload.skipped_by_format,
-      linked_target_count: payload.linked_target_count,
-      account_filter: payload.account_filter,
-      selected_account: payload.selected_account,
-      available_accounts: payload.available_accounts,
-      month_transaction_count_all_accounts: payload.month_transaction_count_all_accounts,
-      month_total_amount_all_accounts: payload.month_total_amount_all_accounts,
-      transaction_count: payload.transaction_count,
-      total_amount: payload.total_amount,
-      category_options: await listCategoryOptions(getKnex()),
-      transactions: payload.transactions,
-    });
-  } catch (err) {
-    sendJson(res, 400, { ok: false, error: err.message });
   }
 }
 
@@ -336,6 +311,66 @@ async function handleTransactionCategoryOverrideRequest(req, res, encodedTransac
       ok: true,
       transaction: result.transaction,
       category_options: result.category_options,
+      rule_result: result.rule_result,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleTransactionNotesRequest(req, res, encodedTransactionId) {
+  let transactionId;
+  try {
+    transactionId = Number(decodeURIComponent(encodedTransactionId));
+  } catch (_err) {
+    sendJson(res, 400, { ok: false, error: 'Transaction path is not valid URL encoding.' });
+    return;
+  }
+
+  if (!Number.isInteger(transactionId) || transactionId < 1) {
+    sendJson(res, 400, { ok: false, error: 'Transaction id must be a positive integer.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+    return;
+  }
+
+  try {
+    const result = await updateTransactionNotes(getKnex(), transactionId, payload);
+    sendJson(res, 200, {
+      ok: true,
+      transaction: result.transaction,
+    });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleTransactionsRequest(res, url) {
+  try {
+    const payload = await fetchAllTransactionsMonthData(getKnex(), url.searchParams);
+    sendJson(res, 200, {
+      ok: true,
+      window: payload.window,
+      include_linked: payload.include_linked,
+      format_filter: payload.format_filter,
+      scanned_transaction_count: payload.scanned_transaction_count,
+      skipped_by_format: payload.skipped_by_format,
+      linked_target_count: payload.linked_target_count,
+      account_filter: payload.account_filter,
+      selected_account: payload.selected_account,
+      available_accounts: payload.available_accounts,
+      month_transaction_count_all_accounts: payload.month_transaction_count_all_accounts,
+      month_total_amount_all_accounts: payload.month_total_amount_all_accounts,
+      transaction_count: payload.transaction_count,
+      total_amount: payload.total_amount,
+      category_options: await listCategoryOptions(getKnex()),
+      transactions: payload.transactions,
     });
   } catch (err) {
     sendJson(res, 400, { ok: false, error: err.message });
@@ -597,6 +632,14 @@ async function requestHandler(req, res) {
     );
     if (transactionCategoryOverrideMatch) {
       await handleTransactionCategoryOverrideRequest(req, res, transactionCategoryOverrideMatch[1]);
+      return;
+    }
+
+    const transactionNotesMatch = pathname.match(
+      /^\/api\/ad-hoc\/transactions\/([^/]+)\/notes$/
+    );
+    if (transactionNotesMatch) {
+      await handleTransactionNotesRequest(req, res, transactionNotesMatch[1]);
       return;
     }
 

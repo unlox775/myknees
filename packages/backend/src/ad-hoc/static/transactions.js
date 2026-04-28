@@ -20,6 +20,7 @@
   });
 
   const storageKey = 'myknees.ad_hoc.all_transactions_state.v1';
+  const allMonthsValue = 'all';
 
   const yearInput = document.getElementById('transactions-year-input');
   const monthSelect = document.getElementById('transactions-month-select');
@@ -38,6 +39,8 @@
   let categoryOptions = [];
   let availableAccounts = [];
   let activeAccountIdentifier = 'all';
+  let loadRequestSeq = 0;
+  let autoLoadTimer = null;
 
   function loadSavedState() {
     try {
@@ -62,6 +65,13 @@
   function setStatus(text, type) {
     statusEl.textContent = text;
     statusEl.className = `status ${type || ''}`.trim();
+  }
+
+  function scheduleLoadTransactions() {
+    if (autoLoadTimer) window.clearTimeout(autoLoadTimer);
+    autoLoadTimer = window.setTimeout(() => {
+      loadTransactions();
+    }, 150);
   }
 
   function amountClass(value) {
@@ -110,6 +120,11 @@
   function buildMonthOptions() {
     monthSelect.innerHTML = '';
 
+    const allMonthsOption = document.createElement('option');
+    allMonthsOption.value = allMonthsValue;
+    allMonthsOption.textContent = 'All months';
+    monthSelect.appendChild(allMonthsOption);
+
     for (let index = 0; index < monthNames.length; index += 1) {
       const option = document.createElement('option');
       option.value = String(index + 1);
@@ -119,18 +134,26 @@
   }
 
   function formatMonthYear(windowInfo) {
+    if (windowInfo.month_scope === allMonthsValue || windowInfo.month == null) {
+      return windowInfo.display_label || `All months ${windowInfo.year}`;
+    }
     const monthName = monthNames[(windowInfo.month || 1) - 1] || `Month ${windowInfo.month}`;
     return `${monthName} ${windowInfo.year}`;
   }
 
   function getSelection() {
     const year = parseInt(yearInput.value, 10);
-    const month = parseInt(monthSelect.value, 10);
+    const rawMonth = String(monthSelect.value || '').trim();
     const account = String(accountSelect.value || 'all').trim() || 'all';
 
     if (!Number.isInteger(year) || year < 1970 || year > 3000) {
       throw new Error('Year must be between 1970 and 3000.');
     }
+    if (rawMonth === allMonthsValue) {
+      return { year, month: allMonthsValue, account };
+    }
+
+    const month = parseInt(rawMonth, 10);
     if (!Number.isInteger(month) || month < 1 || month > 12) {
       throw new Error('Month must be between 1 and 12.');
     }
@@ -142,7 +165,11 @@
     const saved = loadSavedState();
     const now = new Date();
     const year = Number.isInteger(saved.year) ? saved.year : now.getFullYear();
-    const month = Number.isInteger(saved.month) ? saved.month : now.getMonth() + 1;
+    const month = saved.month === allMonthsValue
+      ? allMonthsValue
+      : Number.isInteger(saved.month)
+        ? saved.month
+        : now.getMonth() + 1;
     yearInput.value = String(year);
     monthSelect.value = String(month);
     searchInput.value = String(saved.search_text || '');
@@ -269,6 +296,13 @@
     return wrap;
   }
 
+  function generalRuleStatusText(prefix, ruleResult) {
+    if (!ruleResult || !Number.isInteger(ruleResult.matching_transaction_count)) return prefix;
+    const count = ruleResult.matching_transaction_count;
+    const noun = count === 1 ? 'transaction' : 'transactions';
+    return `${prefix} General rule refreshed ${count} matching ${noun}.`;
+  }
+
   function renderRows(searchTerm) {
     updateSummary(searchTerm);
 
@@ -311,12 +345,22 @@
       categoryCell.appendChild(buildCategoryCell(rowData));
 
       const overrideCell = document.createElement('td');
-      overrideCell.appendChild(categoryEditor.buildCategorySelect({
+      overrideCell.appendChild(categoryEditor.buildCategoryEditor({
         rowData,
         categoryOptions,
         ariaLabel: `Override category for transaction ${rowData.transaction_id}`,
         onChange: (selectEl) => {
-          saveCategoryOverride(rowData, selectEl);
+          const wrapper = selectEl.closest('.category-editor-wrap');
+          const checkboxEl = wrapper ? wrapper.querySelector('.general-rule-checkbox') : null;
+          saveCategoryOverride(rowData, selectEl, {
+            applyAsRule: Boolean(checkboxEl && checkboxEl.checked),
+          });
+        },
+        onGeneralRuleChange: (selectEl, checkboxEl) => {
+          saveCategoryOverride(rowData, selectEl, {
+            applyAsRule: checkboxEl.checked,
+            removeGeneralRule: !checkboxEl.checked,
+          });
         },
       }));
 
@@ -348,10 +392,26 @@
     });
   }
 
-  async function saveCategoryOverride(rowData, selectEl) {
+  async function saveCategoryOverride(rowData, selectEl, options = {}) {
     const previousValue = categoryEditor.currentCategoryValue(rowData);
+    const wrapper = selectEl.closest('.category-editor-wrap');
+    const checkboxEl = wrapper ? wrapper.querySelector('.general-rule-checkbox') : null;
+    const previousChecked = checkboxEl ? checkboxEl.checked : false;
+    const isGeneralRuleSave = Boolean(options.applyAsRule || options.removeGeneralRule);
+
+    if (options.applyAsRule && !selectEl.value) {
+      if (checkboxEl) checkboxEl.checked = false;
+      setStatus('Choose a category before saving a general rule.', 'status-error');
+      return;
+    }
+
     selectEl.disabled = true;
-    setStatus(`Saving category for transaction ${rowData.transaction_id}...`);
+    if (checkboxEl) checkboxEl.disabled = true;
+    setStatus(
+      isGeneralRuleSave
+        ? `Saving general rule for transaction ${rowData.transaction_id}...`
+        : `Saving category for transaction ${rowData.transaction_id}...`
+    );
 
     try {
       const payload = await fetchJson(
@@ -359,7 +419,7 @@
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl)),
+          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl, options)),
         }
       );
 
@@ -375,17 +435,28 @@
         categoryEditor.mergeUpdatedTransaction(currentRows, updated);
       }
 
+      if (isGeneralRuleSave) {
+        await loadTransactions({
+          quiet: true,
+          statusText: generalRuleStatusText('Category saved.', payload.rule_result),
+        });
+        return;
+      }
+
       applySearchFilter();
       setStatus('Category saved. Search results were refreshed using the updated row values.', 'status-ok');
     } catch (err) {
       selectEl.value = previousValue;
+      if (checkboxEl) checkboxEl.checked = previousChecked;
       setStatus(err.message, 'status-error');
     } finally {
       selectEl.disabled = false;
+      if (checkboxEl) checkboxEl.disabled = !selectEl.value;
     }
   }
 
-  async function loadTransactions() {
+  async function loadTransactions(options = {}) {
+    const requestSeq = ++loadRequestSeq;
     let selection;
     try {
       selection = getSelection();
@@ -394,8 +465,12 @@
       return;
     }
 
-    const monthLabel = monthNames[selection.month - 1] || `Month ${selection.month}`;
-    setStatus(`Loading ${monthLabel} ${selection.year} transactions...`);
+    const monthLabel = selection.month === allMonthsValue
+      ? `all months in ${selection.year}`
+      : `${monthNames[selection.month - 1] || `Month ${selection.month}`} ${selection.year}`;
+    if (!options.quiet) {
+      setStatus(`Loading ${monthLabel} transactions...`);
+    }
     loadButton.disabled = true;
     accountSelect.disabled = true;
 
@@ -405,6 +480,7 @@
       params.set('month', selection.month);
       params.set('account', selection.account || 'all');
       const payload = await fetchJson(`/api/ad-hoc/transactions?${params.toString()}`);
+      if (requestSeq !== loadRequestSeq) return;
 
       currentWindow = payload.window || null;
       categoryOptions = Array.isArray(payload.category_options) ? payload.category_options : [];
@@ -434,13 +510,16 @@
       const loadedWindow = currentWindow || {
         year: selection.year,
         month: selection.month,
+        month_scope: selection.month === allMonthsValue ? allMonthsValue : 'single',
       };
       setStatus(
-        `${formatMonthYear(loadedWindow)} loaded for ${accountLabel(activeAccountIdentifier)}. ` +
-          'Search filters locally as you type.',
+        options.statusText ||
+          `${formatMonthYear(loadedWindow)} loaded for ${accountLabel(activeAccountIdentifier)}. ` +
+            'Search filters locally as you type.',
         'status-ok'
       );
     } catch (err) {
+      if (requestSeq !== loadRequestSeq) return;
       currentRows = [];
       filteredRows = [];
       renderEmptyRow(7, 'Failed to load transactions.');
@@ -460,8 +539,21 @@
 
   loadButton.addEventListener('click', loadTransactions);
   searchInput.addEventListener('input', applySearchFilter);
+  yearInput.addEventListener('change', () => {
+    saveState({ year: parseInt(yearInput.value, 10) });
+    scheduleLoadTransactions();
+  });
+  yearInput.addEventListener('input', () => {
+    saveState({ year: parseInt(yearInput.value, 10) });
+    scheduleLoadTransactions();
+  });
+  monthSelect.addEventListener('change', () => {
+    saveState({ month: monthSelect.value === allMonthsValue ? allMonthsValue : parseInt(monthSelect.value, 10) });
+    scheduleLoadTransactions();
+  });
   accountSelect.addEventListener('change', () => {
     saveState({ account: accountSelect.value || 'all' });
+    scheduleLoadTransactions();
   });
 
   buildMonthOptions();

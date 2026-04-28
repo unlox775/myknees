@@ -2349,6 +2349,109 @@ async function updateProjectionProfile(knex, profileKey, payload) {
   };
 }
 
+async function estimateCreditBalanceProjection(knex, searchParams) {
+  const accountIdentifier = String(
+    searchParams.get('credit_account') || searchParams.get('account_identifier') || 'Capital_One'
+  ).trim();
+  const forecastWindow = resolveForecastWindow(searchParams);
+  const creditLimit = round2(asNumber(searchParams.get('credit_limit'), 25000));
+  const lookbackMonths = clamp(
+    Math.floor(asNumber(searchParams.get('lookback_months'), DEFAULT_CATEGORY_LOOKBACK_MONTHS)),
+    1,
+    MAX_CATEGORY_LOOKBACK_MONTHS
+  );
+
+  if (!accountIdentifier) {
+    throw new Error('credit_account is required.');
+  }
+  if (creditLimit <= 0) {
+    throw new Error('credit_limit must be a number > 0.');
+  }
+
+  const account = await knex('accounts').where({ identifier: accountIdentifier }).first('id', 'name', 'type');
+  if (!account) {
+    throw new Error(`Account not found: ${accountIdentifier}`);
+  }
+
+  const balanceRow = await knex('transactions')
+    .where({ account_id: account.id })
+    .first(
+      knex.raw('MAX(date) AS latest_transaction_date'),
+      knex.raw('COALESCE(SUM(amount), 0) AS signed_balance')
+    );
+
+  const signedBalance = round2(Number(balanceRow ? balanceRow.signed_balance : 0));
+  const currentDebtBalance = round2(Math.max(0, -signedBalance));
+  const lookbackEndMonth = shiftMonthKey(forecastWindow.start_month, -1);
+  const lookbackStartMonth = shiftMonthKey(lookbackEndMonth, -(lookbackMonths - 1));
+  const lookbackKeys = enumerateMonthKeys(lookbackStartMonth, lookbackEndMonth);
+  const parsedLookbackEnd = parseMonthKey(lookbackEndMonth);
+
+  const monthlyRows = await knex('transactions')
+    .select(knex.raw('substr(date, 1, 7) AS month_key'))
+    .sum({ signed_net: 'amount' })
+    .where({ account_id: account.id })
+    .where('date', '>=', dateFromMonthKey(lookbackStartMonth))
+    .where('date', '<=', lastDayOfMonth(parsedLookbackEnd.year, parsedLookbackEnd.month))
+    .groupByRaw('substr(date, 1, 7)')
+    .orderBy('month_key');
+
+  const monthlyNetByMonth = new Map(
+    monthlyRows.map((row) => [row.month_key, round2(Number(row.signed_net) || 0)])
+  );
+  const lookback = lookbackKeys.map((monthKey) => {
+    const signedNet = monthlyNetByMonth.has(monthKey) ? monthlyNetByMonth.get(monthKey) : 0;
+    return {
+      month_key: monthKey,
+      signed_net: round2(signedNet),
+      debt_delta: round2(-signedNet),
+    };
+  });
+  const averageMonthlyDebtDelta = round2(
+    lookback.reduce((sum, month) => sum + Number(month.debt_delta), 0) / lookback.length
+  );
+
+  let runningDebtBalance = currentDebtBalance;
+  let limitCrossingMonth = null;
+  const months = forecastWindow.month_keys.map((monthKey) => {
+    runningDebtBalance = round2(Math.max(0, runningDebtBalance + averageMonthlyDebtDelta));
+    if (limitCrossingMonth == null && runningDebtBalance >= creditLimit) {
+      limitCrossingMonth = monthKey;
+    }
+    return {
+      month_key: monthKey,
+      projected_balance: runningDebtBalance,
+      projected_remaining_credit: round2(creditLimit - runningDebtBalance),
+      monthly_debt_delta: averageMonthlyDebtDelta,
+      credit_limit: creditLimit,
+      over_limit: runningDebtBalance >= creditLimit,
+      near_limit: runningDebtBalance >= creditLimit * 0.9,
+    };
+  });
+
+  return {
+    account_identifier: accountIdentifier,
+    account_name: account.name,
+    account_type: account.type,
+    credit_limit: creditLimit,
+    current_debt_balance: currentDebtBalance,
+    signed_transaction_balance: signedBalance,
+    latest_transaction_date: balanceRow ? balanceRow.latest_transaction_date : null,
+    forecast_window: forecastWindow,
+    lookback_window: {
+      start_month: lookbackStartMonth,
+      end_month: lookbackEndMonth,
+      month_count: lookback.length,
+      months: lookback,
+      average_monthly_debt_delta: averageMonthlyDebtDelta,
+    },
+    months,
+    limit_crossing_month: limitCrossingMonth,
+    source_note:
+      'Rough estimate from imported Capital One transaction net activity; not a statement-balance or interest model.',
+  };
+}
+
 module.exports = {
   DEFAULT_ACCOUNT_IDENTIFIER,
   SIGN_CONVENTION,
@@ -2360,4 +2463,5 @@ module.exports = {
   refreshInferredCandidates,
   generateForecast,
   updateProjectionProfile,
+  estimateCreditBalanceProjection,
 };

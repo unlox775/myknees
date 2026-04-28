@@ -15,10 +15,10 @@
 const { getKnex } = require('../src/db/knex');
 const { getParser } = require('../src/classification');
 const {
-  resolveTransactionCategory,
   loadCategoryMaps,
   loadOverrides,
 } = require('../src/classification/resolve-transaction-category');
+const { resolveEffectiveCategory } = require('../src/classification/resolve-effective-category');
 const { resolveFormatIdentifier } = require('../src/reconciliation/resolve-format');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -142,7 +142,7 @@ async function main() {
 
   let q = knex('transactions')
     .where({ account_id: acc.id })
-    .select('id', 'date', 'description', 'amount')
+    .select('id', 'date', 'description', 'amount', 'category', 'category_source')
     .orderBy('date', 'asc')
     .orderBy('id', 'asc');
 
@@ -177,7 +177,7 @@ async function main() {
     for (const r of rows) {
       const desc = r.description || '';
       const norm = parser ? parser.normalize(desc) : desc.trim().toLowerCase();
-      const { category } = resolveTransactionCategory(formatId, desc, norm, ovrMap, catMap);
+      const { category } = resolveEffectiveCategory(r, formatId, desc, norm, ovrMap, catMap);
       console.log(
         padCell(r.date, wDate) +
           sep +
@@ -195,7 +195,7 @@ async function main() {
     for (const r of rows) {
       const desc = r.description || '';
       const norm = parser ? parser.normalize(desc) : desc.trim().toLowerCase();
-      const { category } = resolveTransactionCategory(formatId, desc, norm, ovrMap, catMap);
+      const { category } = resolveEffectiveCategory(r, formatId, desc, norm, ovrMap, catMap);
       console.log(
         [r.date, Number(r.amount), norm, category, desc].map(csvCell).join(',')
       );

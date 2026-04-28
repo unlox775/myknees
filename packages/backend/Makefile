@@ -1,6 +1,10 @@
 # MyKnees Backend - Data store, migrations, backups
 
-.PHONY: help install data-store setup backup migrate migrate-rollback db-reset add-account set-account-parse-format xlsx-explore xlsx-export xlsx-import-classification sql check-csv normalization-report classification-report list-transactions low-hanging-fruit-report bucket-report import-ai-classification-csv plaid-link plaid-sync
+.PHONY: help install data-store setup backup migrate migrate-rollback db-reset add-account set-account-parse-format xlsx-explore xlsx-export xlsx-import-classification sql check-csv normalization-report classification-report list-transactions set-transaction-category-override recategorize-transactions low-hanging-fruit-report bucket-report import-ai-classification-csv start-service stop-service bounce-service refresh-service service-status plaid-link plaid-sync
+
+AD_HOC_HOST ?= 127.0.0.1
+AD_HOC_PORT ?= 8791
+AD_HOC_LOG ?= data/ad-hoc-service.log
 
 help:
 	@echo "Backend commands:"
@@ -19,15 +23,22 @@ help:
 	@echo "  xlsx-export     - Export XLSX sheets to CSV (values only). XLSX_EXPORT_RANGE=A:F to limit columns"
 	@echo "  xlsx-export-raw - One-shot: export Ally (A:F), Capital One (A:E), COSTCO (full) from finance xlsx"
 	@echo "  xlsx-import-classification - Import AI classification sheet into classification tables (env: SOURCE, SHEET, COL_*)"
-	@echo "  sql             - Interactive SQL console (history, truncate at 200 rows)"
+	@echo "  sql             - SQL console (interactive by default; one-shot with SQL='SELECT ...')"
 	@echo "  import-mappings - Import one mapping CSV (FORMAT=ally_bank MAP_CSV=path)"
 	@echo "  recompute-normalized - Recompute all normalized_value from current parser algorithms"
 	@echo "  normalization-report - Health stats → data/normalization-reports/<stamp>/ (opt: SINCE= UNTIL= FROM= TO=)"
 	@echo "  classification-report - Mapping coverage % → data/classification-reports/<stamp>/ (same date args as normalization-report)"
 	@echo "  list-transactions - One account to stdout: table (default) or FORMAT=csv (ACCOUNT= FROM=/TO= or SINCE=/UNTIL=; pipe: | less -S)"
+	@echo "  set-transaction-category-override - Manual category pin for one transaction (TRANSACTION_ID= CATEGORY= [SUBCATEGORY=])"
+	@echo "  recategorize-transactions - Recompute rule-based categories for a date range (FROM= TO= [ACCOUNT=] [DRY_RUN=1])"
 	@echo "  low-hanging-fruit-report - Similar raws → data/low-hanging-fruit-reports/<stamp>/ (omit ACCOUNTS → all DB accounts; or ACCOUNTS=id1,id2 / ACCOUNTS=all; FROM=/TO= optional)"
 	@echo "  import-ai-classification-csv - Wide AI Classification CSV → classification_mappings (CSV=path)"
 	@echo "  bucket-report - Totals by category for a month (YEAR=2026 MONTH=1|January; optional FROM=/TO=, ACCOUNTS=, FORMATS=)"
+	@echo "  start-service  - Start the local ad hoc UI/API service if it is not already running"
+	@echo "  stop-service   - Stop the local ad hoc UI/API service on AD_HOC_PORT"
+	@echo "  bounce-service - Restart the local ad hoc UI/API service on AD_HOC_PORT"
+	@echo "  refresh-service - Alias for bounce-service"
+	@echo "  service-status - Show whether the local ad hoc UI/API service is running"
 	@echo "  check-csv       - Check CSV(s) for formula-like cells (=...). Pass files as args"
 	@echo "  plaid-link      - Local Plaid Link UI → secrets/plaid-items.json (needs PLAID_CLIENT_ID/SECRET)"
 	@echo "  plaid-sync      - transactions/sync → imports/ CSV + import-transaction-records (map secrets/plaid-account-map.json)"
@@ -115,6 +126,23 @@ list-transactions:
 	  $(if $(SINCE),--since=$(SINCE),) $(if $(UNTIL),--until=$(UNTIL),) \
 	  $(if $(FORMAT),--format=$(FORMAT),)
 
+# Per-transaction manual override marker: sets category + category_source=manual_override.
+set-transaction-category-override:
+	@if [ -z "$(TRANSACTION_ID)" ]; then echo "Set TRANSACTION_ID=<transaction id>"; exit 1; fi
+	@if [ -z "$(CATEGORY)" ]; then echo "Set CATEGORY=<category>"; exit 1; fi
+	node scripts/set-transaction-category-override.js \
+	  --transaction-id="$(TRANSACTION_ID)" \
+	  --category="$(CATEGORY)" \
+	  $(if $(SUBCATEGORY),--subcategory="$(SUBCATEGORY)",)
+
+# Rule-based recategorization pass that skips category_source=manual_override rows.
+recategorize-transactions:
+	@if [ -z "$(FROM)" ] || [ -z "$(TO)" ]; then echo "Set FROM=YYYY-MM-DD and TO=YYYY-MM-DD"; exit 1; fi
+	node scripts/recategorize-transactions.js \
+	  --from="$(FROM)" --to="$(TO)" \
+	  $(if $(ACCOUNT),--account="$(ACCOUNT)",) \
+	  $(if $(DRY_RUN),--dry-run,)
+
 # Similar merchant strings likely to merge. Omit ACCOUNTS → every account in the DB.
 # ACCOUNTS=id1,id2 or ACCOUNTS=all. Optional: FROM= TO= or SINCE= UNTIL=, MIN_SCORE=0.78, TOP_CLUSTERS=40, TOP_PAIRS=50, OUT=parent dir
 # INCLUDE_SAME_NORM=true — also list similar strings that already share one normalized label (e.g. case dupes).
@@ -147,10 +175,26 @@ bucket-report:
 	fi
 
 sql:
-	node scripts/sql-console.js
+	@if [ -n "$(SQL)" ]; then \
+		node scripts/sql-console.js "$(SQL)" $(if $(OUT),--out="$(OUT)",); \
+	else \
+		node scripts/sql-console.js; \
+	fi
 
 check-csv:
 	@node scripts/check-csv-no-formulas.js $(CSV_FILES) || true
+
+start-service:
+	node scripts/bounce-ad-hoc-service.js --action=start --host="$(AD_HOC_HOST)" --port="$(AD_HOC_PORT)" --log="$(AD_HOC_LOG)"
+
+stop-service:
+	node scripts/bounce-ad-hoc-service.js --action=stop --host="$(AD_HOC_HOST)" --port="$(AD_HOC_PORT)" --log="$(AD_HOC_LOG)"
+
+bounce-service refresh-service:
+	node scripts/bounce-ad-hoc-service.js --action=bounce --host="$(AD_HOC_HOST)" --port="$(AD_HOC_PORT)" --log="$(AD_HOC_LOG)"
+
+service-status:
+	node scripts/bounce-ad-hoc-service.js --action=status --host="$(AD_HOC_HOST)" --port="$(AD_HOC_PORT)" --log="$(AD_HOC_LOG)"
 
 plaid-link:
 	node scripts/plaid/link-local-server.js

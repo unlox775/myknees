@@ -262,13 +262,19 @@
     if (!options.preserveDetails) clearDetail();
   }
 
-  function buildCategorySelect(rowData) {
-    return categoryEditor.buildCategorySelect({
+  function buildCategoryEditor(rowData) {
+    return categoryEditor.buildCategoryEditor({
       rowData,
       categoryOptions,
       ariaLabel: `Override category for transaction ${rowData.transaction_id}`,
       onChange: (selectEl) => {
         saveCategoryOverride(rowData, selectEl);
+      },
+      onGeneralRuleChange: (selectEl, checkboxEl) => {
+        saveCategoryOverride(rowData, selectEl, {
+          applyAsRule: checkboxEl.checked,
+          removeGeneralRule: !checkboxEl.checked,
+        });
       },
     });
   }
@@ -334,7 +340,7 @@
       defaultCategoryCell.textContent = categoryEditor.defaultRuleCategory(rowData);
 
       const overrideCell = document.createElement('td');
-      overrideCell.appendChild(buildCategorySelect(rowData));
+      overrideCell.appendChild(buildCategoryEditor(rowData));
 
       const idCell = document.createElement('td');
       idCell.className = 'numeric';
@@ -364,10 +370,15 @@
     renderTrend(payload, { preserveDetails: true });
   }
 
-  async function saveCategoryOverride(rowData, selectEl) {
+  async function saveCategoryOverride(rowData, selectEl, options = {}) {
     const previousValue = categoryEditor.currentCategoryValue(rowData);
     selectEl.disabled = true;
-    setStatus(`Saving category for transaction ${rowData.transaction_id}...`);
+    const savingRule = options.applyAsRule || options.removeGeneralRule;
+    setStatus(
+      savingRule
+        ? `Saving general rule for transaction ${rowData.transaction_id}...`
+        : `Saving category for transaction ${rowData.transaction_id}...`
+    );
 
     try {
       const payload = await fetchJson(
@@ -375,7 +386,7 @@
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl)),
+          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl, options)),
         }
       );
 
@@ -397,7 +408,15 @@
         transactions: currentDetailRows,
         category_options: categoryOptions,
       });
-      setStatus('Category saved. Trend totals refreshed; striped rows have moved out of this detail view.', 'status-ok');
+      const ruleCount = payload.rule_result && Number.isFinite(Number(payload.rule_result.matching_transaction_count))
+        ? Number(payload.rule_result.matching_transaction_count)
+        : null;
+      setStatus(
+        ruleCount == null
+          ? 'Category saved. Trend totals refreshed; striped rows have moved out of this detail view.'
+          : `General rule saved. ${ruleCount} matching non-manual transactions refreshed.`,
+        'status-ok'
+      );
     } catch (err) {
       selectEl.value = previousValue;
       setStatus(err.message, 'status-error');

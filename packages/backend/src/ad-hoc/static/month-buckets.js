@@ -219,13 +219,19 @@
     if (!options.preserveDetails) clearDetails();
   }
 
-  function buildCategorySelect(rowData) {
-    return categoryEditor.buildCategorySelect({
+  function buildCategoryEditor(rowData) {
+    return categoryEditor.buildCategoryEditor({
       rowData,
       categoryOptions,
       ariaLabel: `Override bucket for transaction ${rowData.transaction_id}`,
       onChange: (selectEl) => {
         saveCategoryOverride(rowData, selectEl);
+      },
+      onGeneralRuleChange: (selectEl, checkboxEl) => {
+        saveCategoryOverride(rowData, selectEl, {
+          applyAsRule: checkboxEl.checked,
+          removeGeneralRule: !checkboxEl.checked,
+        });
       },
     });
   }
@@ -267,16 +273,15 @@
       amountCell.className = `numeric ${amountClass(rowData.amount)}`.trim();
       amountCell.textContent = formatAmount(rowData.amount);
 
-      const normalizedCell = document.createElement('td');
-      normalizedCell.className = 'normalized-cell';
-      normalizedCell.textContent = rowData.normalized_description || '';
-      normalizedCell.title = rowData.raw_description || '';
+      const normalizedCell = categoryEditor.buildNormalizedDescriptionCell(rowData, {
+        onEditNotes: saveTransactionNotes,
+      });
 
       const defaultCategoryCell = document.createElement('td');
       defaultCategoryCell.textContent = categoryEditor.defaultRuleCategory(rowData);
 
       const overrideCell = document.createElement('td');
-      overrideCell.appendChild(buildCategorySelect(rowData));
+      overrideCell.appendChild(buildCategoryEditor(rowData));
 
       const idCell = document.createElement('td');
       idCell.className = 'numeric';
@@ -300,10 +305,36 @@
     renderSummary(payload, { preserveDetails: true });
   }
 
-  async function saveCategoryOverride(rowData, selectEl) {
+  async function saveTransactionNotes(rowData) {
+    setStatus(`Saving note for transaction ${rowData.transaction_id}...`);
+    try {
+      await categoryEditor.saveTransactionNotes(rowData, {
+        onSaved: (updated) => {
+          categoryEditor.mergeUpdatedTransaction(currentDetailRows, updated);
+        },
+      });
+      renderDetail({
+        bucket: currentDetailBucket,
+        transaction_count: currentDetailRows.length,
+        total_amount: categoryEditor.sumAmounts(currentDetailRows),
+        transactions: currentDetailRows,
+        category_options: categoryOptions,
+      });
+      setStatus('Transaction note saved.', 'status-ok');
+    } catch (err) {
+      setStatus(err.message, 'status-error');
+    }
+  }
+
+  async function saveCategoryOverride(rowData, selectEl, options = {}) {
     const previousValue = categoryEditor.currentCategoryValue(rowData);
     selectEl.disabled = true;
-    setStatus(`Saving category for transaction ${rowData.transaction_id}...`);
+    const savingRule = options.applyAsRule || options.removeGeneralRule;
+    setStatus(
+      savingRule
+        ? `Saving general rule for transaction ${rowData.transaction_id}...`
+        : `Saving category for transaction ${rowData.transaction_id}...`
+    );
 
     try {
       const payload = await fetchJson(
@@ -311,7 +342,7 @@
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl)),
+          body: JSON.stringify(categoryEditor.buildOverridePayload(selectEl, options)),
         }
       );
 
@@ -326,7 +357,15 @@
         transactions: currentDetailRows,
         category_options: categoryOptions,
       });
-      setStatus('Category saved. Summary totals refreshed; striped rows have moved out of this detail view.', 'status-ok');
+      const ruleCount = payload.rule_result && Number.isFinite(Number(payload.rule_result.matching_transaction_count))
+        ? Number(payload.rule_result.matching_transaction_count)
+        : null;
+      setStatus(
+        ruleCount == null
+          ? 'Category saved. Summary totals refreshed; striped rows have moved out of this detail view.'
+          : `General rule saved. ${ruleCount} matching non-manual transactions refreshed.`,
+        'status-ok'
+      );
     } catch (err) {
       selectEl.value = previousValue;
       setStatus(err.message, 'status-error');

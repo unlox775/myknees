@@ -23,6 +23,7 @@ const {
   resolveTransactionCategory,
   loadCategoryMaps,
   loadOverrides,
+  loadRuleOverrides,
 } = require('../src/classification/resolve-transaction-category');
 const { resolveFormatIdentifier } = require('../src/reconciliation/resolve-format');
 
@@ -146,6 +147,8 @@ async function loadTransactionsInScope(knex, dateScope) {
     'transactions.account_id',
     'transactions.date',
     'transactions.description',
+    'transactions.category',
+    'transactions.category_source',
     'accounts.identifier as account_identifier'
   );
   if (dateScope) {
@@ -158,7 +161,7 @@ async function loadTransactionsInScope(knex, dateScope) {
 /**
  * @param {Awaited<ReturnType<typeof loadTransactionsInScope>>} rows
  */
-function accumulateStats(rows, formatCache, catMap, ovrMap) {
+function accumulateStats(rows, formatCache, catMap, ovrMap, ruleOverrideMap) {
   /** @type {Map<string, { total: number, override: number, mapping: number, capitalOneFb: number, inferred: number, unmapped: number, explicitUndefined: number }>} */
   const byKey = new Map();
   /** @type {Map<string, Map<string, { count: number, sampleDesc: string }>>} */
@@ -195,33 +198,38 @@ function accumulateStats(rows, formatCache, catMap, ovrMap) {
     const formatId = formatCache.get(tx.account_id);
     if (!formatId) continue;
 
-    const parser = getParser(formatId);
-    const desc = tx.description || '';
-    const norm = parser ? parser.normalize(desc) : desc.trim().toLowerCase();
-    const r = resolveTransactionCategory(formatId, desc, norm, ovrMap, catMap);
+    let r;
+    if (tx.category_source === 'manual_override' && tx.category) {
+      r = { source: 'override', category: tx.category };
+    } else {
+      const parser = getParser(formatId);
+      const desc = tx.description || '';
+      const norm = parser ? parser.normalize(desc) : desc.trim().toLowerCase();
+      r = resolveTransactionCategory(formatId, desc, norm, ovrMap, catMap, ruleOverrideMap);
+
+      if (r.source === 'unmapped') {
+        const k = norm || '(empty norm)';
+        const u = unmappedNorms.get(k) || { count: 0, sampleDesc: desc.slice(0, 120) };
+        u.count += 1;
+        unmappedNorms.set(k, u);
+
+        if (!unmappedByFormat.has(formatId)) unmappedByFormat.set(formatId, new Map());
+        const fm = unmappedByFormat.get(formatId);
+        const fu = fm.get(k) || { count: 0, sampleDesc: desc.slice(0, 120) };
+        fu.count += 1;
+        fm.set(k, fu);
+
+        const aid = tx.account_identifier;
+        if (!unmappedByAccount.has(aid)) unmappedByAccount.set(aid, new Map());
+        const am = unmappedByAccount.get(aid);
+        const au = am.get(k) || { count: 0, sampleDesc: desc.slice(0, 120) };
+        au.count += 1;
+        am.set(k, au);
+      }
+    }
 
     bump(`format:${formatId}`, r);
     bump(`account:${tx.account_identifier}`, r);
-
-    if (r.source === 'unmapped') {
-      const k = norm || '(empty norm)';
-      const u = unmappedNorms.get(k) || { count: 0, sampleDesc: desc.slice(0, 120) };
-      u.count += 1;
-      unmappedNorms.set(k, u);
-
-      if (!unmappedByFormat.has(formatId)) unmappedByFormat.set(formatId, new Map());
-      const fm = unmappedByFormat.get(formatId);
-      const fu = fm.get(k) || { count: 0, sampleDesc: desc.slice(0, 120) };
-      fu.count += 1;
-      fm.set(k, fu);
-
-      const aid = tx.account_identifier;
-      if (!unmappedByAccount.has(aid)) unmappedByAccount.set(aid, new Map());
-      const am = unmappedByAccount.get(aid);
-      const au = am.get(k) || { count: 0, sampleDesc: desc.slice(0, 120) };
-      au.count += 1;
-      am.set(k, au);
-    }
   }
 
   return { byKey, unmappedNorms, unmappedByFormat, unmappedByAccount };
@@ -291,12 +299,14 @@ async function main() {
 
   const catMap = await loadCategoryMaps(knex);
   const ovrMap = await loadOverrides(knex);
+  const ruleOverrideMap = await loadRuleOverrides(knex);
 
   const { byKey, unmappedNorms, unmappedByFormat, unmappedByAccount } = accumulateStats(
     txRows,
     formatCache,
     catMap,
-    ovrMap
+    ovrMap,
+    ruleOverrideMap
   );
 
   const formats = await knex('parse_formats').select('id', 'identifier', 'display_name').orderBy('identifier');

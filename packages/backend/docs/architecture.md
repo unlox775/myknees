@@ -50,6 +50,7 @@ One row per transaction in an account (date, description, amount, categorization
 | source_subcategory   | TEXT    | Subcategory from source                                               |
 | category             | TEXT    | Our final category                                                    |
 | subcategory          | TEXT    | Our final subcategory                                                 |
+| category_source      | TEXT    | `rule_based` or `manual_override` (manual row pins win)              |
 | transaction_type     | TEXT    | Our classification (e.g. expense, transfer)                           |
 | linked_transaction_id| INTEGER | FK → transactions.id (other account); nullable                       |
 | created_at           | [timestamp with time zone*](#dates-and-timestamps) | Display in local TZ in app |
@@ -113,12 +114,21 @@ For **exploded accounts** (transfer-style vs receipt-style detail), validation r
 
 - **parse_formats**: One row per import format (e.g. `ally_bank`, `capital_one`, `costco_receipts`). Each format has a parser (base: `normalize(description)` → normalized string). **Pre-scrub and LC are per-format** and come from the XLSX **Work Tables** sheet: Ally (cols A–D), Capital One (I–M), Costco (R–U). Each parser implements its own pre-scrub and LC; there is no shared LC. Use `make xlsx-extract-work-formulas` to dump the Work Tables formulas and align parsers when the spreadsheet changes.
 - **classification_categories**: Domain table of final category names (Bills & Utilities, Income, Eating Out, etc.). **Seeded in migration** so the standard categories are part of the codebase.
+- **one_time_events**: Durable event/project table for bounded spending buckets. Transactions use `category = "One-Time Event"` plus `transactions.one_time_event_id` to point at a specific event row.
 - **classification_raw_values**: Distinct raw description strings per parse format (from transaction CSVs).
 - **classification_normalized**: Cached normalizer output per raw value so changing the parser does not drift existing mappings.
 - **classification_mappings**: normalized_value → category_id (FK to classification_categories) per parse format; populated from mapping CSVs (normalized_value, category name).
 - **classification_overrides**: Per raw value, optional user override category_id.
+- **classification_rule_overrides**: Per parse format + normalized value, optional supervisor-created rule destination. These rules support both normal categories and `One-Time Event` with a numeric event reference.
 
 Lookup: raw → normalized (cached) → category_id from override if present, else from classification_mappings. Mapping import: run `import-mappings.js` (format + mapping CSV); see README. Transaction CSV import is a **single pass**: one script (`import-transaction-records.js`) updates classification (distinct descriptions → raw_values + normalized) and inserts transaction rows; see below.
+
+Transaction-level pinning is separate from raw-value overrides:
+
+- **Raw-value override** (`classification_overrides`): applies to any row matching that exact raw description in that parse format.
+- **General rule override** (`classification_rule_overrides`): applies to all non-manual rows with the same parse format + normalized description.
+- **Manual row override** (`transactions.category_source=manual_override`): applies to one specific transaction id and is preserved by recategorization runs.
+- **One-time event override** (`transactions.one_time_event_id`): optional numeric link used with the `One-Time Event` category so normal monthly buckets can exclude bounded events while reports can still drill into each specific event.
 
 ### Single-pass transaction import (classification + transaction rows)
 

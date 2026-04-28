@@ -109,14 +109,69 @@ async function loadOverrides(knex) {
 }
 
 /**
+ * @param {import('knex').Knex} knex
+ * @returns {Promise<Map<string, {
+ *   category: string,
+ *   one_time_event_id: number|null,
+ *   one_time_event_key: string|null,
+ *   one_time_event_display_name: string|null,
+ *   one_time_event_year: number|null,
+ *   one_time_event_status: string|null
+ * }>>}
+ */
+async function loadRuleOverrides(knex) {
+  const rows = await knex('classification_rule_overrides')
+    .join('classification_categories', 'classification_categories.id', 'classification_rule_overrides.category_id')
+    .join('parse_formats', 'parse_formats.id', 'classification_rule_overrides.parse_format_id')
+    .leftJoin('one_time_events', 'one_time_events.id', 'classification_rule_overrides.one_time_event_id')
+    .select(
+      'parse_formats.identifier as format_id',
+      'classification_rule_overrides.normalized_value',
+      'classification_categories.name as category',
+      'classification_rule_overrides.one_time_event_id',
+      'one_time_events.event_key as one_time_event_key',
+      'one_time_events.display_name as one_time_event_display_name',
+      'one_time_events.event_year as one_time_event_year',
+      'one_time_events.status as one_time_event_status'
+    );
+
+  const keyToRule = new Map();
+  for (const row of rows) {
+    keyToRule.set(`${row.format_id}\t${String(row.normalized_value || '').trim()}`, {
+      category: row.category,
+      one_time_event_id: row.one_time_event_id || null,
+      one_time_event_key: row.one_time_event_key || null,
+      one_time_event_display_name: row.one_time_event_display_name || null,
+      one_time_event_year: row.one_time_event_year || null,
+      one_time_event_status: row.one_time_event_status || null,
+    });
+  }
+  return keyToRule;
+}
+
+/**
  * @param {string} formatId
  * @param {string} desc
  * @param {string} norm
  * @param {Map<string, string>} ovrMap
  * @param {Map<string, Map<string, string>>} catMap
- * @returns {{ source: 'override'|'mapping'|'capital_one_fallback'|'inferred'|'unmapped', category: string }}
+ * @param {Map<string, {category: string, one_time_event_id?: number|null, one_time_event_key?: string|null, one_time_event_display_name?: string|null, one_time_event_year?: number|null, one_time_event_status?: string|null}>} [ruleOverrideMap]
+ * @returns {{ source: 'rule_override'|'override'|'mapping'|'capital_one_fallback'|'inferred'|'unmapped', category: string, one_time_event_id?: number|null, one_time_event_key?: string|null, one_time_event_display_name?: string|null, one_time_event_year?: number|null, one_time_event_status?: string|null }}
  */
-function resolveTransactionCategory(formatId, desc, norm, ovrMap, catMap) {
+function resolveTransactionCategory(formatId, desc, norm, ovrMap, catMap, ruleOverrideMap) {
+  const ruleOverride = ruleOverrideMap && ruleOverrideMap.get(`${formatId}\t${String(norm || '').trim()}`);
+  if (ruleOverride) {
+    return {
+      source: 'rule_override',
+      category: ruleOverride.category,
+      one_time_event_id: ruleOverride.one_time_event_id || null,
+      one_time_event_key: ruleOverride.one_time_event_key || null,
+      one_time_event_display_name: ruleOverride.one_time_event_display_name || null,
+      one_time_event_year: ruleOverride.one_time_event_year || null,
+      one_time_event_status: ruleOverride.one_time_event_status || null,
+    };
+  }
+
   const ovr = ovrMap.get(`${formatId}\t${desc}`);
   if (ovr) {
     return { source: 'override', category: ovr };
@@ -156,6 +211,7 @@ module.exports = {
   resolveTransactionCategory,
   loadCategoryMaps,
   loadOverrides,
+  loadRuleOverrides,
   inferCategory,
   lookupCapitalOneStyle,
   capitalOneTailForCompare,

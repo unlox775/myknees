@@ -1,7 +1,11 @@
 # MyKnees Finance Application - Monorepo Makefile
 # Provides commands for managing the entire MyKnees ecosystem
 
-.PHONY: help install build dev test lint clean status scraped-knees web-app backend shared
+.PHONY: help install build dev test lint clean status scraped-knees web-app backend shared start-service stop-service bounce-service refresh-service service-status
+
+AD_HOC_HOST ?= 127.0.0.1
+AD_HOC_PORT ?= 8791
+AD_HOC_LOG ?= data/ad-hoc-service.log
 
 # Default target
 help:
@@ -29,6 +33,11 @@ help:
 	@echo "  data-store            - Create ~/.myknees/backend and symlinks (Mac)"
 	@echo "  backup                - Backup imports + data"
 	@echo "  migrate               - Run DB migrations"
+	@echo "  start-service         - Start the local ad hoc UI/API service"
+	@echo "  stop-service          - Stop the local ad hoc UI/API service"
+	@echo "  bounce-service        - Restart the local ad hoc UI/API service"
+	@echo "  refresh-service       - Alias for bounce-service"
+	@echo "  service-status        - Show local ad hoc UI/API service status"
 	@echo ""
 	@echo "📚 Shared Libraries (Planned):"
 	@echo "  shared-build          - Build shared libraries (when ready)"
@@ -157,8 +166,7 @@ web-app-build:
 	@echo "This will be available when the web-app package is set up"
 
 # Backend commands
-backend-dev:
-	@echo "Backend has no dev server yet; use make data-store and make migrate"
+backend-dev: start-service
 
 backend-build:
 	@echo "Backend has no build step; use make data-store and make migrate"
@@ -183,6 +191,34 @@ backup:
 migrate:
 	@if [ -d "packages/backend" ]; then \
 		cd packages/backend && make migrate; \
+	else \
+		echo "❌ packages/backend not found"; exit 1; \
+	fi
+
+start-service:
+	@if [ -d "packages/backend" ]; then \
+		cd packages/backend && make start-service AD_HOC_HOST="$(AD_HOC_HOST)" AD_HOC_PORT="$(AD_HOC_PORT)" AD_HOC_LOG="$(AD_HOC_LOG)"; \
+	else \
+		echo "❌ packages/backend not found"; exit 1; \
+	fi
+
+stop-service:
+	@if [ -d "packages/backend" ]; then \
+		cd packages/backend && make stop-service AD_HOC_HOST="$(AD_HOC_HOST)" AD_HOC_PORT="$(AD_HOC_PORT)" AD_HOC_LOG="$(AD_HOC_LOG)"; \
+	else \
+		echo "❌ packages/backend not found"; exit 1; \
+	fi
+
+bounce-service refresh-service:
+	@if [ -d "packages/backend" ]; then \
+		cd packages/backend && make bounce-service AD_HOC_HOST="$(AD_HOC_HOST)" AD_HOC_PORT="$(AD_HOC_PORT)" AD_HOC_LOG="$(AD_HOC_LOG)"; \
+	else \
+		echo "❌ packages/backend not found"; exit 1; \
+	fi
+
+service-status:
+	@if [ -d "packages/backend" ]; then \
+		cd packages/backend && make service-status AD_HOC_HOST="$(AD_HOC_HOST)" AD_HOC_PORT="$(AD_HOC_PORT)" AD_HOC_LOG="$(AD_HOC_LOG)"; \
 	else \
 		echo "❌ packages/backend not found"; exit 1; \
 	fi

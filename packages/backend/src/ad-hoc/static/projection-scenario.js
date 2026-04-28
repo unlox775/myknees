@@ -36,6 +36,11 @@
   const forecastSummaryEl = document.getElementById('scenario-forecast-summary');
   const monthTotalsBody = document.getElementById('scenario-month-totals-body');
   const forecastRowsBody = document.getElementById('scenario-forecast-rows-body');
+  const balanceChartStatusEl = document.getElementById('scenario-balance-chart-status');
+  const allyBalanceSummaryEl = document.getElementById('scenario-ally-balance-summary');
+  const allyBalanceChartEl = document.getElementById('scenario-ally-balance-chart');
+  const capitalOneSummaryEl = document.getElementById('scenario-capital-one-summary');
+  const capitalOneChartEl = document.getElementById('scenario-capital-one-chart');
 
   const REQUIRED_PROFILE_KEYS = {
     parent_plus: 'parent_plus_monthly_start_2026_06',
@@ -60,6 +65,7 @@
       category_defaults: [],
     },
     latestForecast: null,
+    capitalOneProjection: null,
     runTimer: null,
     loadToken: 0,
   };
@@ -672,6 +678,131 @@
     answerEdwardJonesEl.className = edwardJonesSummary.className;
   }
 
+  function monthLabel(monthKey) {
+    const parts = String(monthKey || '').split('-');
+    if (parts.length !== 2) return String(monthKey || '');
+    return parts[1];
+  }
+
+  function renderEmptyChart(chartEl, summaryEl, message) {
+    chartEl.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'balance-chart-empty';
+    empty.textContent = message;
+    chartEl.appendChild(empty);
+    summaryEl.textContent = message;
+  }
+
+  function renderBalanceBarChart(chartEl, rows, options) {
+    chartEl.innerHTML = '';
+
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'balance-chart-empty';
+      empty.textContent = 'No monthly balances available.';
+      chartEl.appendChild(empty);
+      return;
+    }
+
+    const values = rows.map((row) => Number(row.balance) || 0);
+    const maxValue = Math.max(...values, Number(options.limit || 0), 1);
+
+    for (const rowData of rows) {
+      const value = Number(rowData.balance) || 0;
+      const column = document.createElement('div');
+      column.className = 'balance-chart-column';
+
+      const valueLabel = document.createElement('div');
+      valueLabel.className = 'balance-chart-value';
+      valueLabel.textContent = formatAmount(value);
+
+      const track = document.createElement('div');
+      track.className = 'balance-bar-track';
+
+      const bar = document.createElement('div');
+      const classes = ['balance-bar'];
+      if (rowData.danger) classes.push('is-danger');
+      if (rowData.warning) classes.push('is-warning');
+      const heightPercent = Math.max(4, Math.min(100, (Math.abs(value) / maxValue) * 100));
+      bar.className = classes.join(' ');
+      bar.style.height = `${heightPercent}%`;
+      bar.title = `${rowData.month_key}: ${formatAmount(value)}`;
+      track.appendChild(bar);
+
+      const label = document.createElement('div');
+      label.className = 'balance-chart-month';
+      label.textContent = monthLabel(rowData.month_key);
+      label.title = rowData.month_key;
+
+      column.appendChild(valueLabel);
+      column.appendChild(track);
+      column.appendChild(label);
+      chartEl.appendChild(column);
+    }
+  }
+
+  function renderBalanceProjectionCharts(payload) {
+    const monthTotals = Array.isArray(payload.month_totals) ? payload.month_totals : [];
+    const allyRows = monthTotals
+      .filter((month) => month.ending_balance != null)
+      .map((month) => ({
+        month_key: month.month_key,
+        balance: Number(month.ending_balance),
+        warning: Number(month.ending_balance) < state.local.warning_balance_threshold,
+        danger: Number(month.ending_balance) < 0,
+      }));
+
+    if (allyRows.length) {
+      const lastAlly = allyRows[allyRows.length - 1];
+      const lowestAlly = allyRows.reduce((lowest, row) =>
+        Number(row.balance) < Number(lowest.balance) ? row : lowest
+      );
+      allyBalanceSummaryEl.textContent =
+        `Ending ${formatAmount(lastAlly.balance)}; lowest ${formatAmount(lowestAlly.balance)} in ${lowestAlly.month_key}.`;
+      renderBalanceBarChart(allyBalanceChartEl, allyRows, {
+        limit: Math.max(...allyRows.map((row) => Number(row.balance) || 0)),
+      });
+    } else {
+      renderEmptyChart(allyBalanceChartEl, allyBalanceSummaryEl, 'No Ally balance forecast available.');
+    }
+
+    const capitalOne = state.capitalOneProjection;
+    const capitalRows = capitalOne && Array.isArray(capitalOne.months)
+      ? capitalOne.months.map((month) => ({
+        month_key: month.month_key,
+        balance: Number(month.projected_balance),
+        warning: Boolean(month.near_limit),
+        danger: Boolean(month.over_limit),
+      }))
+      : [];
+
+    if (capitalOne && capitalRows.length) {
+      const crossing = capitalOne.limit_crossing_month
+        ? ` Crosses ${formatAmount(capitalOne.credit_limit)} in ${capitalOne.limit_crossing_month}.`
+        : ` Does not cross ${formatAmount(capitalOne.credit_limit)} in this window.`;
+      const monthlyDelta = capitalOne.lookback_window
+        ? Number(capitalOne.lookback_window.average_monthly_debt_delta)
+        : 0;
+
+      capitalOneSummaryEl.textContent =
+        `Current imported balance ${formatAmount(capitalOne.current_debt_balance)} as of ` +
+        `${capitalOne.latest_transaction_date || 'latest import'}; estimated monthly change ` +
+        `${formatAmount(monthlyDelta)}.${crossing}`;
+      renderBalanceBarChart(capitalOneChartEl, capitalRows, {
+        limit: Number(capitalOne.credit_limit) || 25000,
+      });
+    } else {
+      renderEmptyChart(
+        capitalOneChartEl,
+        capitalOneSummaryEl,
+        'Capital One projection unavailable. The Ally forecast still updated.'
+      );
+    }
+
+    balanceChartStatusEl.textContent =
+      'Charts update from the current scenario run. Capital One is an imported-transaction trend estimate, not a full statement model.';
+  }
+
   function evaluateEdwardJonesAffordability(rows) {
     const profiles = listEdwardJonesProfiles();
     const resumeDates = [];
@@ -826,6 +957,7 @@
     }
 
     renderScenarioAnswer(payload);
+    renderBalanceProjectionCharts(payload);
   }
 
   function buildScenarioOverridesPayload(selection) {
@@ -920,7 +1052,7 @@
       const overrides = buildScenarioOverridesPayload(selection);
       setStatus('Running scenario forecast with current defaults + overrides...');
 
-      const response = await fetchJson(
+      const forecastRequest = fetchJson(
         `/api/ad-hoc/projections/forecast?account=${encodeURIComponent(
           selection.account
         )}&start_month=${encodeURIComponent(selection.startMonth)}&months=${selection.months}`,
@@ -934,6 +1066,19 @@
           }),
         }
       );
+      const capitalOneRequest = fetchJson(
+        `/api/ad-hoc/projections/credit-balance?credit_account=Capital_One` +
+          `&start_month=${encodeURIComponent(selection.startMonth)}` +
+          `&months=${selection.months}&credit_limit=25000&lookback_months=${DEFAULT_LOOKBACK_MONTHS}`
+      ).catch((err) => ({
+        ok: false,
+        error: err.message,
+      }));
+
+      const [response, capitalOneProjection] = await Promise.all([forecastRequest, capitalOneRequest]);
+      state.capitalOneProjection = capitalOneProjection && capitalOneProjection.ok
+        ? capitalOneProjection
+        : null;
 
       renderForecast(response);
       setStatus('Scenario forecast updated.', 'status-ok');
@@ -941,6 +1086,9 @@
       setStatus(err.message, 'status-error');
       emptyRow(monthTotalsBody, 5, 'Failed to compute month totals.');
       emptyRow(forecastRowsBody, 7, 'Failed to compute forecast rows.');
+      renderEmptyChart(allyBalanceChartEl, allyBalanceSummaryEl, 'Forecast error.');
+      renderEmptyChart(capitalOneChartEl, capitalOneSummaryEl, 'Capital One projection unavailable.');
+      balanceChartStatusEl.textContent = 'Balance charts unavailable due to forecast error.';
       answerSurvivalEl.textContent = 'Scenario answer unavailable due to forecast error.';
       answerLowestEl.textContent = '';
       answerWarningEl.textContent = '';
@@ -1076,6 +1224,8 @@
   emptyRow(categoriesBody, 5, 'Loading category defaults...');
   emptyRow(monthTotalsBody, 5, 'Loading forecast summary...');
   emptyRow(forecastRowsBody, 7, 'Loading forecast rows...');
+  renderEmptyChart(allyBalanceChartEl, allyBalanceSummaryEl, 'Loading Ally balance chart...');
+  renderEmptyChart(capitalOneChartEl, capitalOneSummaryEl, 'Loading Capital One balance chart...');
 
   registerControlListeners();
   loadScenarioDefaults();

@@ -116,11 +116,6 @@ body {
   flex: 1 1 18rem;
 }
 
-.control-field-search {
-  min-width: min(30rem, 100%);
-  flex: 1 1 24rem;
-}
-
 .control-field input,
 .control-field select,
 button {
@@ -226,25 +221,30 @@ tbody tr.bucket-row:hover {
   max-width: 34rem;
 }
 
-.raw-description-inline {
-  margin-top: 0.2rem;
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-}
-
-.category-cell {
-  display: grid;
-  gap: 0.16rem;
-}
-
-.category-source-note {
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-}
-
 .category-override-select {
   min-width: 12rem;
   max-width: 18rem;
+}
+
+.category-editor-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.general-rule-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.general-rule-checkbox {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .transaction-moved-row td {

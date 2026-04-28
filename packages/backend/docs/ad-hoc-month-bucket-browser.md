@@ -1,4 +1,4 @@
-# MyKnees Ad Hoc Browsers (Transactions + Month Buckets + Category Trends + Projection APIs + Six-Month Scenario + Recurring Review)
+# MyKnees Ad Hoc Browsers (Month Buckets + Category Trends + Projection APIs + Six-Month Scenario + Recurring Review)
 
 This backend-served ad hoc interface area runs from the backend package and serves both pages and `/api` routes from one local process.
 
@@ -7,7 +7,7 @@ This backend-served ad hoc interface area runs from the backend package and serv
 From `packages/backend`:
 
 ```bash
-make bounce-service
+AD_HOC_PORT=8791 node scripts/ad-hoc-server.js
 ```
 
 Open pages:
@@ -23,21 +23,9 @@ http://127.0.0.1:8791/ad-hoc/recurring-review
 
 If you choose a different host or port, set `AD_HOC_HOST` / `AD_HOC_PORT` and use that URL.
 
-Useful service targets:
-
-```bash
-make start-service
-make stop-service
-make bounce-service
-make refresh-service
-make service-status
-```
-
-`bounce-service` and `refresh-service` stop the ad hoc service listening on `AD_HOC_PORT` and start a fresh detached server. Defaults are `AD_HOC_HOST=127.0.0.1`, `AD_HOC_PORT=8791`, and `AD_HOC_LOG=data/ad-hoc-service.log`.
-
 ## Page URLs
 
-1. General all-transactions browser (todo-14)
+1. All transactions ledger browser (todo-14)
    - `/ad-hoc/transactions`
 2. Month-first bucket browser (todo-09)
    - `/ad-hoc/month-buckets`
@@ -54,43 +42,14 @@ make service-status
 
 Most endpoints are read-only. Projection profile updates, scenario forecast requests, and transaction category overrides use POST.
 
-### All-transactions APIs
-
-1. Monthly transaction list with account filter
+### All transactions API
 
 ```text
 GET /api/ad-hoc/transactions?year=2026&month=4&account=all
-GET /api/ad-hoc/transactions?year=2026&month=4&account=Ally_Bank
+GET /api/ad-hoc/transactions?year=2026&month=all&account=all
 ```
 
-Returns:
-- `window` metadata (`year`, `month`, `from`, `to`)
-- `selected_account` and `available_accounts[]` (for account dropdown population)
-- monthly counts/totals for selected account and all accounts
-- `transactions[]` rows sorted chronologically by date then transaction id
-- `category_options` for per-row override dropdowns
-
-Each transaction row includes:
-- `transaction_id`
-- `date`
-- `account_identifier`
-- `account_name`
-- `amount`
-- `effective_category` / `bucket`
-- `default_rule_category`
-- `category_source`
-- `normalized_description`
-- `raw_description`
-- one-time event metadata fields when present
-
-2. Per-row category override write endpoint
-
-```text
-POST /api/ad-hoc/transactions/:transaction_id/category-override
-Content-Type: application/json
-```
-
-This endpoint is shared by Transactions, Month Buckets, and Category Trends.
+The all-transactions page can load either one selected month or all months in one selected year. The response includes the selected date window, account catalog/counts for that loaded window, category options, totals, and chronological transaction rows. Browser search filters the loaded result set locally.
 
 ### Month bucket APIs
 
@@ -148,6 +107,26 @@ One-time event override payload:
 {
   "category": "One-Time Event",
   "one_time_event_id": 1
+}
+```
+
+General rule payload:
+
+```json
+{
+  "category": "Eating Out",
+  "one_time_event_id": null,
+  "apply_as_rule": true
+}
+```
+
+The general rule path stores a rule for the edited transaction's parse format plus normalized description, clears the current row's manual override, and refreshes matching non-manual transactions. Rows already marked `manual_override` are not overwritten.
+
+Remove an existing general rule for the current transaction's normalized description:
+
+```json
+{
+  "remove_general_rule": true
 }
 ```
 
@@ -421,16 +400,12 @@ Returns:
 
 - API classification and transfer exclusion follow the same logic used by `scripts/bucket-report.js`.
 - Manual category edits write `transactions.category` with `category_source=manual_override`; selecting the default rule option clears the override and restores `category_source=rule_based`.
+- Checking `General rule` beside a transaction category dropdown converts the selected destination into a reusable normalized-description rule instead of a one-row manual override.
 - Bounded one-time events use a stable top-level bucket plus a numeric event reference:
   - `transactions.category = "One-Time Event"`
   - `transactions.one_time_event_id -> one_time_events.id`
   - the UI renders these as combined dropdown destinations, such as `One-Time Event / 2026 Spring Musical: Once Upon a Mattress`.
 - Detail tables autosave category changes, refresh the summary/trend totals, and keep rows visible with diagonal striping when the edit moves that transaction out of the currently loaded detail view.
-- Transactions page behavior:
-  - month/year/account changes fetch fresh rows from backend
-  - search is case-insensitive and runs client-side only on the loaded rows
-  - searchable fields: date, amount text, normalized/raw description, account, category, and tx id
-  - after a category save, the row updates immediately and the current search filter is reapplied (so rows may disappear if they no longer match the active search)
 - Unknown or uncategorized buckets remain visible; the API does not silently merge category labels.
 - Category trend default range follows canonical cutoff rule:
   - `last_12_months_ending_latest_transaction_month`

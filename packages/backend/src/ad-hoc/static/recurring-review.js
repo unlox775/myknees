@@ -1,5 +1,6 @@
 (function () {
   const DEFAULT_ACCOUNTS = 'Ally_Bank,Capital_One,Chase_VISA';
+  const LOCAL_STORAGE_KEY = 'myknees.ad_hoc.recurring_review_state.v1';
 
   const moneyFormat = new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -21,6 +22,7 @@
     candidates: [],
     candidateById: new Map(),
     keepById: new Map(),
+    excludedById: new Map(),
     detailById: new Map(),
     detailAccountToken: DEFAULT_ACCOUNTS,
   };
@@ -74,6 +76,53 @@
     });
   }
 
+  function readSavedState() {
+    try {
+      const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (!raw) return;
+
+      const saved = JSON.parse(raw);
+      const keepEntries = saved && saved.keep_by_id && typeof saved.keep_by_id === 'object'
+        ? Object.entries(saved.keep_by_id)
+        : [];
+      const excludedEntries =
+        saved && saved.excluded_by_id && typeof saved.excluded_by_id === 'object'
+          ? Object.entries(saved.excluded_by_id)
+          : [];
+
+      state.keepById = new Map(keepEntries.map(([id, value]) => [id, Boolean(value)]));
+      state.excludedById = new Map(excludedEntries.map(([id, value]) => [id, Boolean(value)]));
+    } catch (_err) {
+      state.keepById = new Map();
+      state.excludedById = new Map();
+    }
+  }
+
+  function writeSavedState() {
+    const keepById = {};
+    const excludedById = {};
+
+    for (const [candidateId, value] of state.keepById.entries()) {
+      keepById[candidateId] = Boolean(value);
+    }
+
+    for (const [candidateId, value] of state.excludedById.entries()) {
+      if (value) excludedById[candidateId] = true;
+    }
+
+    try {
+      window.localStorage.setItem(
+        LOCAL_STORAGE_KEY,
+        JSON.stringify({
+          keep_by_id: keepById,
+          excluded_by_id: excludedById,
+        })
+      );
+    } catch (_err) {
+      setStatus('Recurring review loaded, but browser local storage could not be updated.', 'status-error');
+    }
+  }
+
   function resolveSelection() {
     const accountToken = String(accountsInput.value || '').trim() || DEFAULT_ACCOUNTS;
     if (accountToken.toLowerCase() !== 'all') {
@@ -100,14 +149,24 @@
     return state.keepById.get(candidateId) !== false;
   }
 
+  function candidateIsExcluded(candidateId) {
+    return state.excludedById.get(candidateId) === true;
+  }
+
   function updateSavingsGrid() {
     let keptMonthly = 0;
     let keptAnnual = 0;
     let savingsMonthly = 0;
     let savingsAnnual = 0;
     let uncheckedCount = 0;
+    let excludedCount = 0;
 
     for (const candidate of state.candidates) {
+      if (candidateIsExcluded(candidate.candidate_id)) {
+        excludedCount += 1;
+        continue;
+      }
+
       const monthly = Number(candidate.amount.monthly_equivalent) || 0;
       const annual = Number(candidate.amount.annual_equivalent) || 0;
       if (candidateIsKept(candidate.candidate_id)) {
@@ -123,11 +182,34 @@
     const lines = [
       `<p><strong>Kept recurring monthly equivalent:</strong> ${formatAmount(keptMonthly)}</p>`,
       `<p><strong>Potential savings if unchecked items are canceled:</strong> ${formatAmount(savingsMonthly)} monthly / ${formatAmount(savingsAnnual)} annual</p>`,
-      `<p><strong>Unchecked candidates:</strong> ${uncheckedCount} of ${state.candidates.length}</p>`,
-      '<p class="answer-neutral">Savings totals are hypothetical and should be validated against essentiality labels before acting.</p>',
+      `<p><strong>Unchecked subscription candidates:</strong> ${uncheckedCount} of ${state.candidates.length - excludedCount}</p>`,
+      `<p><strong>Marked not a subscription:</strong> ${excludedCount} excluded from savings math.</p>`,
+      '<p class="answer-neutral">Unchecked rows model possible cancellation savings. Rows marked not a subscription are kept visible but excluded from categorization and savings totals.</p>',
     ];
 
     savingsGridEl.innerHTML = lines.join('');
+  }
+
+  function updateTableSummary() {
+    let activeCount = 0;
+    let excludedCount = 0;
+    let activeMonthlyTotal = 0;
+    let activeAnnualTotal = 0;
+
+    for (const candidate of state.candidates) {
+      if (candidateIsExcluded(candidate.candidate_id)) {
+        excludedCount += 1;
+        continue;
+      }
+
+      activeCount += 1;
+      activeMonthlyTotal += Number(candidate.amount.monthly_equivalent) || 0;
+      activeAnnualTotal += Number(candidate.amount.annual_equivalent) || 0;
+    }
+
+    summaryEl.textContent = `${activeCount} active candidate(s), ${excludedCount} marked not a subscription, ${formatAmount(
+      activeMonthlyTotal
+    )} active monthly equivalent, ${formatAmount(activeAnnualTotal)} active annual equivalent.`;
   }
 
   function labelClass(label) {
@@ -190,19 +272,37 @@
     return cell;
   }
 
+  function renderKeepControl(cell, candidateId) {
+    cell.innerHTML = '';
+
+    if (candidateIsExcluded(candidateId)) {
+      const excludedLabel = document.createElement('span');
+      excludedLabel.className = 'recurring-excluded-label';
+      excludedLabel.textContent = 'Excluded';
+      cell.appendChild(excludedLabel);
+      return;
+    }
+
+    const keepToggle = document.createElement('input');
+    keepToggle.type = 'checkbox';
+    keepToggle.className = 'recurring-keep-toggle';
+    keepToggle.dataset.candidateId = candidateId;
+    keepToggle.checked = candidateIsKept(candidateId);
+    keepToggle.setAttribute('aria-label', 'Keep this recurring candidate');
+    cell.appendChild(keepToggle);
+  }
+
   function createCandidateRow(candidate) {
     const row = document.createElement('tr');
     row.className = 'recurring-candidate-row';
+    if (candidateIsExcluded(candidate.candidate_id)) {
+      row.classList.add('is-not-subscription');
+    }
     row.dataset.candidateId = candidate.candidate_id;
 
     const keepCell = document.createElement('td');
     keepCell.className = 'numeric';
-    const keepToggle = document.createElement('input');
-    keepToggle.type = 'checkbox';
-    keepToggle.className = 'recurring-keep-toggle';
-    keepToggle.dataset.candidateId = candidate.candidate_id;
-    keepToggle.checked = candidateIsKept(candidate.candidate_id);
-    keepCell.appendChild(keepToggle);
+    renderKeepControl(keepCell, candidate.candidate_id);
 
     const nameCell = document.createElement('td');
     const name = document.createElement('div');
@@ -241,6 +341,20 @@
     detailButton.textContent = 'Show detail';
     detailCell.appendChild(detailButton);
 
+    const excludeCell = document.createElement('td');
+    const excludeButton = document.createElement('button');
+    excludeButton.type = 'button';
+    excludeButton.className = 'not-subscription-toggle-button';
+    excludeButton.dataset.candidateId = candidate.candidate_id;
+    excludeButton.textContent = candidateIsExcluded(candidate.candidate_id)
+      ? 'Restore as subscription'
+      : 'Not a subscription';
+    excludeButton.setAttribute(
+      'aria-pressed',
+      candidateIsExcluded(candidate.candidate_id) ? 'true' : 'false'
+    );
+    excludeCell.appendChild(excludeButton);
+
     row.appendChild(keepCell);
     row.appendChild(nameCell);
     row.appendChild(labelsCell);
@@ -250,13 +364,14 @@
     row.appendChild(annualCell);
     row.appendChild(historyCell);
     row.appendChild(detailCell);
+    row.appendChild(excludeCell);
 
     const detailRow = document.createElement('tr');
     detailRow.className = 'recurring-detail-row is-hidden';
     detailRow.dataset.candidateId = candidate.candidate_id;
 
     const detailWrapCell = document.createElement('td');
-    detailWrapCell.colSpan = 9;
+    detailWrapCell.colSpan = 10;
 
     const detailWrap = document.createElement('div');
     detailWrap.className = 'detail-wrap';
@@ -266,6 +381,25 @@
     detailRow.appendChild(detailWrapCell);
 
     return { row, detailRow };
+  }
+
+  function refreshCandidateRow(candidateId) {
+    const row = candidatesBody.querySelector(
+      `.recurring-candidate-row[data-candidate-id="${candidateId}"]`
+    );
+    if (!(row instanceof HTMLTableRowElement)) return;
+
+    row.classList.toggle('is-not-subscription', candidateIsExcluded(candidateId));
+
+    const keepCell = row.cells[0];
+    if (keepCell) renderKeepControl(keepCell, candidateId);
+
+    const excludeButton = row.querySelector('.not-subscription-toggle-button');
+    if (excludeButton instanceof HTMLButtonElement) {
+      const excluded = candidateIsExcluded(candidateId);
+      excludeButton.textContent = excluded ? 'Restore as subscription' : 'Not a subscription';
+      excludeButton.setAttribute('aria-pressed', excluded ? 'true' : 'false');
+    }
   }
 
   function renderDetailTable(payload, containerEl) {
@@ -404,13 +538,10 @@
       }
     }
 
-    const totals = payload.totals || {};
-    summaryEl.textContent = `${totals.candidate_count || 0} candidate(s), ${formatAmount(
-      totals.monthly_equivalent_total
-    )} monthly equivalent, ${formatAmount(totals.annual_equivalent_total)} annual equivalent.`;
+    updateTableSummary();
 
     if (!candidates.length) {
-      renderEmptyRow(9, 'No recurring candidates matched this filter set.');
+      renderEmptyRow(10, 'No recurring candidates matched this filter set.');
       updateSavingsGrid();
       return;
     }
@@ -451,11 +582,14 @@
       const payload = await fetchJson(`/api/ad-hoc/recurring-review/candidates?${params.toString()}`);
       renderCutoffNote(payload);
       renderCandidates(payload);
-      setStatus('Recurring review loaded. Uncheck rows to model hypothetical cancellation savings.', 'status-ok');
+      setStatus(
+        'Recurring review loaded. Uncheck rows to model cancellation savings, or mark false positives as not subscriptions.',
+        'status-ok'
+      );
     } catch (err) {
       cutoffNoteEl.textContent = '';
       summaryEl.textContent = '';
-      renderEmptyRow(9, 'Failed to load recurring candidates.');
+      renderEmptyRow(10, 'Failed to load recurring candidates.');
       setStatus(err.message, 'status-error');
     } finally {
       loadButton.disabled = false;
@@ -471,12 +605,27 @@
     if (!candidateId) return;
 
     state.keepById.set(candidateId, target.checked);
+    writeSavedState();
     updateSavingsGrid();
   });
 
   candidatesBody.addEventListener('click', async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+
+    const excludeButton = target.closest('.not-subscription-toggle-button');
+    if (excludeButton instanceof HTMLButtonElement) {
+      const candidateId = excludeButton.dataset.candidateId;
+      if (!candidateId) return;
+
+      const nextExcluded = !candidateIsExcluded(candidateId);
+      state.excludedById.set(candidateId, nextExcluded);
+      writeSavedState();
+      refreshCandidateRow(candidateId);
+      updateTableSummary();
+      updateSavingsGrid();
+      return;
+    }
 
     const button = target.closest('.detail-toggle-button');
     if (!(button instanceof HTMLButtonElement)) return;
@@ -500,7 +649,8 @@
 
   loadButton.addEventListener('click', loadRecurringReview);
 
-  renderEmptyRow(9, 'Loading recurring candidates...');
+  readSavedState();
+  renderEmptyRow(10, 'Loading recurring candidates...');
   updateSavingsGrid();
   loadRecurringReview();
 })();

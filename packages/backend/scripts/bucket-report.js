@@ -19,10 +19,11 @@ const path = require('path');
 const { getKnex } = require('../src/db/knex');
 const { getParser } = require('../src/classification');
 const {
-  resolveTransactionCategory,
   loadCategoryMaps,
   loadOverrides,
+  loadRuleOverrides,
 } = require('../src/classification/resolve-transaction-category');
+const { resolveEffectiveCategory } = require('../src/classification/resolve-effective-category');
 const { resolveFormatIdentifier } = require('../src/reconciliation/resolve-format');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -144,6 +145,8 @@ async function main() {
       'transactions.date',
       'transactions.description',
       'transactions.amount',
+      'transactions.category',
+      'transactions.category_source',
       'transactions.linked_transaction_id',
       'accounts.identifier as account_identifier',
       'parse_formats.identifier as parse_format_identifier'
@@ -173,6 +176,7 @@ async function main() {
 
   const catMap = await loadCategoryMaps(knex);
   const ovrMap = await loadOverrides(knex);
+  const ruleOverrideMap = await loadRuleOverrides(knex);
 
   /** @type {Map<string, { count: number, sum: number, samples: string[] }>} */
   const buckets = new Map();
@@ -198,12 +202,12 @@ async function main() {
     const desc = tx.description || '';
     const norm = parser ? parser.normalize(desc) : desc.trim().toLowerCase();
 
-    const resolved = resolveTransactionCategory(formatId, desc, norm, ovrMap, catMap);
+    const resolved = resolveEffectiveCategory(tx, formatId, desc, norm, ovrMap, catMap, ruleOverrideMap);
     const bucket = resolved.category;
 
     includedCount += 1;
 
-    if (resolved.source === 'unmapped' && unmappedSamples.length < 40) {
+    if (resolved.source === 'rule_based' && resolved.rule_source === 'unmapped' && unmappedSamples.length < 40) {
       unmappedSamples.push(`${tx.date}\t${tx.account_identifier}\t${norm}\t${desc.slice(0, 80)}`);
     }
 

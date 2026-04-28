@@ -5,6 +5,7 @@ const {
 } = require('./month-bucket-service');
 
 const ALL_ACCOUNTS_TOKEN = 'all';
+const ALL_MONTHS_TOKEN = 'all';
 
 function parseAccountFilter(searchParams) {
   const raw = String(searchParams.get('account') || '').trim();
@@ -17,6 +18,37 @@ function amountNumber(value) {
   const num = Number(value);
   if (!Number.isFinite(num)) return 0;
   return num;
+}
+
+function parseYear(searchParams) {
+  const now = new Date();
+  const rawYear = searchParams.get('year');
+  const year = rawYear == null || rawYear === '' ? now.getFullYear() : parseInt(String(rawYear).trim(), 10);
+  if (!Number.isInteger(year) || year < 1970 || year > 3000) {
+    throw new Error(`Invalid year value: ${rawYear}`);
+  }
+  return year;
+}
+
+function resolveTransactionsWindow(searchParams) {
+  const rawMonth = String(searchParams.get('month') || '').trim().toLowerCase();
+  if (rawMonth === ALL_MONTHS_TOKEN) {
+    const year = parseYear(searchParams);
+    return {
+      year,
+      month: null,
+      month_scope: ALL_MONTHS_TOKEN,
+      from: `${year}-01-01`,
+      to: `${year}-12-31`,
+      label: `${year}-01-01 ... ${year}-12-31`,
+      display_label: `All months ${year}`,
+    };
+  }
+
+  return {
+    ...resolveMonthWindow(searchParams),
+    month_scope: 'single',
+  };
 }
 
 async function listAccountCatalog(knex) {
@@ -40,7 +72,7 @@ function resolveAccountIdentifier(accountCatalog, accountFilter) {
 }
 
 async function fetchAllTransactionsMonthData(knex, searchParams, options = {}) {
-  const monthWindow = resolveMonthWindow(searchParams);
+  const monthWindow = resolveTransactionsWindow(searchParams);
   const includeLinked = Boolean(options.includeLinked);
   const formatFilter = Array.isArray(options.formatFilter)
     ? options.formatFilter
@@ -115,5 +147,6 @@ async function fetchAllTransactionsMonthData(knex, searchParams, options = {}) {
 
 module.exports = {
   ALL_ACCOUNTS_TOKEN,
+  ALL_MONTHS_TOKEN,
   fetchAllTransactionsMonthData,
 };

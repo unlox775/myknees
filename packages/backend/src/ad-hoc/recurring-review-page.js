@@ -7,7 +7,8 @@ function renderRecurringReviewPage() {
     <h1>Recurring Review + Subscription Detector</h1>
     <p>
       Detect recurring charges across recent history, review cadence confidence with compact
-      month-by-month evidence, and toggle candidates off to model hypothetical savings.
+      month-by-month evidence, toggle candidates off to model hypothetical savings, and
+      mark false positives as not subscriptions.
     </p>
     <div class="controls" role="group" aria-label="Recurring review controls">
       <label class="control-field control-field-wide" for="recurring-accounts-input">
@@ -44,7 +45,8 @@ function renderRecurringReviewPage() {
     <p class="fine-print" id="recurring-cutoff-note"></p>
     <p class="fine-print">
       Keep toggles are hypothetical planning controls. Unchecking an essential bill computes math,
-      but does not imply cancellation is appropriate.
+      but does not imply cancellation is appropriate. Browser-local choices are restored when this
+      page is reopened.
     </p>
   </section>
 
@@ -69,6 +71,7 @@ function renderRecurringReviewPage() {
             <th scope="col" class="numeric">Annual Eq</th>
             <th scope="col">24-Month History</th>
             <th scope="col">Detail</th>
+            <th scope="col">Subscription?</th>
           </tr>
         </thead>
         <tbody id="recurring-candidates-body"></tbody>

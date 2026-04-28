@@ -45,12 +45,14 @@ make migrate
 | `make xlsx-export` | Export XLSX sheets to CSV (values only). `XLSX_EXPORT_RANGE=A:F` limits columns |
 | `make xlsx-export-raw` | One-shot: export Ally bills (A:F), Capital One (A:E), COSTCO Receipts (full) from finance xlsx |
 | `make xlsx-import-classification` | Import AI classification sheet into classification tables (env: SOURCE, SHEET, COL_*) |
-| `make sql` | Interactive SQL console (history, results truncated at 200 rows) |
+| `make sql` | SQL console: interactive by default; one-shot with `SQL="SELECT ..."` (optional `OUT=results.csv`) |
 | `make check-csv CSV_FILES="f1.csv f2.csv"` | Check CSV(s) for formula-like cells (=...) |
 | `make import-ai-classification-csv CSV=…/Finance Analysis - AI Classification.csv` | Wide Ally/Capital One/Costco export → `classification_mappings` |
 | `make bucket-report YEAR=2026 MONTH=1` (or `MONTH=January`, or `FROM=`/`TO=`) | Totals by category; omits reconciled transfer pairs; optional `ACCOUNTS=`, `FORMATS=` |
 | `make classification-report` | Coverage: % from DB mappings vs heuristics vs unmapped → `data/classification-reports/<stamp>/` (`SINCE=`/`UNTIL=` or `FROM=`/`TO=` like normalization-report) |
 | `make list-transactions ACCOUNT=Capital_One FROM=2026-01-01 TO=2026-01-31` | Padded columns → stdout; `FORMAT=csv` for CSV; omit date vars for all time; pipe to `less -S` to trim long lines |
+| `make set-transaction-category-override TRANSACTION_ID=27439 CATEGORY=kids_education` | Set one transaction to `category_source=manual_override` and pin category value |
+| `make recategorize-transactions FROM=2026-01-01 TO=2026-04-23` | Recompute rule-based categories in range; preserves all `manual_override` rows |
 
 ### XLSX → CSV and classification
 
@@ -79,10 +81,37 @@ Schema and design: [docs/architecture.md](docs/architecture.md).
 
 - **parse_formats**: Ally Bank, Capital One, Costco Receipts (one parser per format; each implements `normalize(description)` → normalized string).
 - **classification_categories**: Domain table of final categories (Bills & Utilities, Income, Eating Out, etc.) **seeded in migration** so they are part of the codebase.
+- **one_time_events**: Durable table for bounded event/project buckets, such as `2026 Spring Musical: Once Upon a Mattress`.
 - **classification_raw_values**: Distinct raw descriptions per parse format (from transaction CSVs).
 - **classification_normalized**: Cached normalizer output per raw value. After changing parser logic (e.g. aligning with Work Tables), run **`make recompute-normalized`** to refresh all normalized values; fewer distinct values and more will match existing mappings.
 - **classification_mappings**: normalized_value → category_id per parse format (from mapping CSVs).
 - **classification_overrides**: Optional per-raw-value override category.
+- **classification_rule_overrides**: Supervisor-created general rules keyed by parse format + normalized description. These can point at a normal category or at `One-Time Event` plus `one_time_event_id`.
+
+### Per-transaction manual overrides
+
+MyKnees supports per-transaction category overrides with explicit source tracking:
+
+- `category_source=manual_override`: manually pinned category on that transaction row.
+- `category_source=rule_based`: category comes from current rule-based classification pass.
+- `one_time_event_id`: optional numeric reference to `one_time_events.id`; used with `category = "One-Time Event"` so one-off projects do not inflate normal monthly planning buckets such as Shopping.
+
+Manual overrides are preserved when recategorizing a date range.
+
+Ad hoc transaction editors also support a `General rule` checkbox. When checked after choosing a dropdown destination, the backend stores a normalized-description rule, clears the current row override, and applies the rule to matching non-manual transactions.
+
+Example using `Check Paid #1261`:
+
+```bash
+# 1) Find transaction id
+make list-transactions ACCOUNT=Ally_Bank FROM=2026-01-21 TO=2026-01-21 FORMAT=csv
+
+# 2) Pin manual override
+make set-transaction-category-override TRANSACTION_ID=27439 CATEGORY=kids_education
+
+# 3) Re-run rule-based recategorization (manual override is preserved)
+make recategorize-transactions FROM=2026-01-01 TO=2026-04-23 ACCOUNT=Ally_Bank
+```
 
 ### Single-pass transaction import
 
@@ -162,7 +191,23 @@ See [docs/architecture.md](docs/architecture.md) and migrations `20250131000001_
 
 ## SQL console
 
-`make sql` (or `npm run sql`) starts an interactive SQL console. **Multi-line:** type SQL until a line ends with `;` then Enter. Command history (up/down); result sets truncated at 200 rows (`SQL_CONSOLE_MAX_ROWS`). Type `exit` or `quit` to exit. On startup the DB path is shown (e.g. `~/.myknees/backend/data/myknees.db`) so you can confirm which DB you're using. **CLI (one-shot, CSV):** `node scripts/sql-console.js "SELECT * FROM accounts"` or `node scripts/sql-console.js "SELECT * FROM accounts" --out results.csv`. See [docs/sql-queries.md](docs/sql-queries.md) for useful queries.
+`make sql` (or `npm run sql`) starts an interactive SQL console by default. **Multi-line:** type SQL until a line ends with `;` then Enter. Command history (up/down); result sets truncated at 200 rows (`SQL_CONSOLE_MAX_ROWS`). Type `exit` or `quit` to exit. On startup the DB path is shown (e.g. `~/.myknees/backend/data/myknees.db`) so you can confirm which DB you're using.
+
+Non-interactive one-shot via Make:
+
+```bash
+make sql SQL="SELECT * FROM accounts LIMIT 10;"
+make sql SQL="SELECT * FROM accounts;" OUT=results.csv
+```
+
+Direct CLI one-shot still works:
+
+```bash
+node scripts/sql-console.js "SELECT * FROM accounts"
+node scripts/sql-console.js "SELECT * FROM accounts" --out results.csv
+```
+
+See [docs/sql-queries.md](docs/sql-queries.md) for useful queries.
 
 ## Reference file
 

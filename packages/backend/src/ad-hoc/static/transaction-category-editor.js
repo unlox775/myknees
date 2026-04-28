@@ -152,6 +152,77 @@
     return true;
   }
 
+  function buildNormalizedDescriptionCell(rowData, options = {}) {
+    const cell = document.createElement('td');
+    cell.className = 'normalized-cell';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'transaction-description-wrap';
+
+    const text = document.createElement('span');
+    text.className = 'transaction-normalized-description';
+    text.textContent = rowData && rowData.normalized_description ? rowData.normalized_description : '';
+    if (rowData && rowData.raw_description) {
+      text.title = rowData.raw_description;
+    }
+    wrap.appendChild(text);
+
+    const notes = rowData && rowData.notes ? String(rowData.notes) : '';
+    if (notes) {
+      const noteIcon = document.createElement('span');
+      noteIcon.className = 'transaction-note-icon';
+      noteIcon.textContent = 'note';
+      noteIcon.title = notes;
+      noteIcon.setAttribute('aria-label', `Transaction note: ${notes}`);
+      wrap.appendChild(noteIcon);
+    }
+
+    if (typeof options.onEditNotes === 'function') {
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.className = 'transaction-note-edit-button';
+      editButton.textContent = 'edit';
+      editButton.title = notes ? 'Edit transaction note' : 'Add transaction note';
+      editButton.setAttribute('aria-label', editButton.title);
+      editButton.addEventListener('click', () => {
+        options.onEditNotes(rowData);
+      });
+      wrap.appendChild(editButton);
+    }
+
+    cell.appendChild(wrap);
+    if (rowData && rowData.raw_description && rowData.raw_description !== rowData.normalized_description) {
+      const raw = document.createElement('div');
+      raw.className = 'raw-description-inline';
+      raw.textContent = `Raw: ${rowData.raw_description}`;
+      cell.appendChild(raw);
+    }
+
+    return cell;
+  }
+
+  async function saveTransactionNotes(rowData, options = {}) {
+    if (!rowData || !rowData.transaction_id) return null;
+    const currentNotes = rowData.notes || '';
+    const nextNotes = window.prompt('Transaction note', currentNotes);
+    if (nextNotes == null) return null;
+
+    const response = await fetch(`/api/ad-hoc/transactions/${encodeURIComponent(rowData.transaction_id)}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: nextNotes }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || payload.ok === false) {
+      throw new Error(payload && payload.error ? payload.error : `Save failed with HTTP ${response.status}`);
+    }
+
+    if (typeof options.onSaved === 'function') {
+      options.onSaved(payload.transaction);
+    }
+    return payload.transaction;
+  }
+
   function sumAmounts(rows) {
     if (!Array.isArray(rows)) return 0;
     return Number(rows.reduce((sum, row) => sum + (Number(row && row.amount) || 0), 0).toFixed(2));
@@ -163,6 +234,8 @@
     buildCategorySelect,
     buildCategoryEditor,
     buildOverridePayload,
+    buildNormalizedDescriptionCell,
+    saveTransactionNotes,
     mergeUpdatedTransaction,
     sumAmounts,
   };
