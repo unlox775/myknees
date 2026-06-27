@@ -7,103 +7,67 @@ This document summarizes what's currently implemented in ScrapedKnees as of the 
 
 ### 1. Extension Foundation
 - **Chrome Extension Structure**: Complete manifest, background script, content script, popup
-- **Build System**: Webpack configuration with production and development modes
+- **Build System**: Webpack configuration with production and development modes  
 - **Testing Framework**: Jest setup with Chrome API mocking
 - **Development Tools**: Makefile with comprehensive commands
 - **Documentation**: README and development guides
 
-### 2. Settings Management (Basic)
+### 2. Settings Management
 - **Options Page**: Modern, responsive UI for configuration
-- **API Key Storage**: Secure storage for Groq and OpenRouter API keys
-- **User Preferences**: Settings for auto-extract, debug mode, overlay opacity
-- **Data Management**: Export/import functionality and data statistics
-- **Validation**: Basic form validation and error handling
+- **API Key Storage**: Secure storage for Groq, OpenRouter, OpenAI, and Anthropic API keys
+- **Provider Selection**: UI for choosing AI provider
+- **Storage Integration**: Chrome storage API integration
+- **Basic Validation**: Form validation and error handling
 
-### 3. AI Manager
+### 3. AI Manager (Complete Implementation)
 - **Provider Management**: Support for multiple AI providers (Groq, OpenRouter, OpenAI, Anthropic)
-- **Unified Interface**: Consistent API for all AI providers
+- **Unified Interface**: Consistent API for all AI providers through AIManager class
 - **Settings Integration**: API key management and provider selection
 - **Error Handling**: Robust error handling and fallback mechanisms
 - **Cost Tracking**: Basic cost estimation and usage tracking
+- **Debug Logging**: Persistent request/response logging
+- **Connection Testing**: API key validation and connection testing
 
-## 🚧 Partially Implemented
+### 4. Basic UI Infrastructure
+- **Popup Interface**: Basic popup with placeholder functionality
+- **Content Script Injection**: Framework for injecting scripts into pages
+- **Options Page**: Fully functional settings management interface
+- **Icon and Branding**: Extension icon and basic styling
 
-### 1. Training Session Engine
-- **Status**: Basic structure in place, needs refinement
-- **Missing**: Advanced session management, validation, versioning
+## 🚧 Scaffolding Exists (Not Functional)
+These have code structure but don't implement the user's actual vision:
 
-### 2. Data Extraction Engine
-- **Status**: Basic extraction logic, needs enhancement
-- **Missing**: Advanced pattern recognition, edge case handling
+### 1. Training/Data Extraction Remnants
+- **Status**: Basic DOM manipulation code exists but doesn't match planned architecture
+- **Issue**: Built without proper requirements - needs to be rebuilt according to specifications
 
-## 📋 Proposed to be Implemented (Not Reviewed by Human Yet)
-
-### 1. Enhanced Training Infrastructure
-- **Visual Training Mode**: Element selection with overlays
-- **Training Sessions**: Session management and storage
-- **Keyboard Shortcuts**: Ctrl+Shift+S for training, Ctrl+Click for exclusions
-- **UI Components**: Training panel and visual feedback
-
-### 2. Enhanced Data Extraction Infrastructure
-- **DOM Manipulation**: Element selection and data extraction
-- **Pagination Support**: Framework for handling paginated content
-- **Export Functionality**: CSV export of extracted data
-- **Data Validation**: Data structure validation
-
-### 3. Storage Engine
-- **Training Session Storage**: Structured storage of training configurations
-- **Scraped Data Storage**: Store extracted data with metadata
-- **User Preferences Storage**: Cross-device sync capabilities
-- **Analytics Storage**: Usage tracking and performance monitoring
-
-### 4. Analytics Engine
-- **Usage Statistics**: Track user behavior and feature usage
-- **Performance Metrics**: Monitor extension performance
-- **Error Tracking**: Capture and report errors
-- **User Behavior Analysis**: Understand how users interact with the extension
-
-## 🧪 Testing Status
-
-### ✅ Working Tests
-- **Content Script Tests**: Element selection, overlay management, training mode
-- **Options Page Tests**: Settings management, data export, UI interactions
-- **Build System**: Production and development builds working
-- **Chrome API Mocking**: Proper mocking for testing environment
-
-### 📋 Test Coverage
-- **Coverage**: Basic functionality covered
-- **Missing**: Integration tests, end-to-end tests, performance tests
+## 📋 Planned for Implementation
+All other features described in documentation are planned but not yet implemented.
 
 ## 🏗️ Architecture
 
 ### Component-Based Structure
-The extension follows a component-based architecture where each major feature is self-contained and communicates through well-defined interfaces. This pattern allows for independent development, testing, and maintenance of each component.
+The extension follows a component-based architecture where each major feature is self-contained and communicates through well-defined interfaces.
 
-**Key Pattern**: Each component has its own directory or file with a clear responsibility and minimal dependencies on other components.
+**Successfully Implemented Pattern**: The AI Manager demonstrates the desired microservice pattern:
+- `src/ai-manager.js` - Main service interface
+- `src/ai-manager/providers/` - Individual AI provider implementations  
+- `src/ai-manager/interfaces/` - Shared interfaces and types
+- `src/ai-manager/storage/` - AI-specific storage utilities
 
-**Example**: The AI Manager (`src/ai-manager/`) is completely self-contained:
-- `ai-manager.js` - Main service interface
-- `providers/` - Individual AI provider implementations
-- `interfaces/` - Shared interfaces and types
-- `storage/` - AI-specific storage utilities
-
-This isolation means the AI Manager can be tested independently, swapped out entirely, or enhanced without affecting other parts of the system.
+This isolation allows the AI Manager to be tested independently and enhanced without affecting other parts of the system.
 
 ### Extension Script Separation
-Following Chrome extension best practices, the code is separated into distinct script types with clear boundaries:
+Following Chrome extension best practices:
 
-**Background Script** (`background.js`): Handles extension lifecycle, message routing, and storage operations. Acts as the central coordinator.
+**Background Script** (`background.js`): Handles extension lifecycle, message routing, and AI service coordination.
 
-**Content Script** (`content.js`): Manages page interaction, training mode, and visual feedback. Isolated from the page's JavaScript context.
+**Content Script Infrastructure**: Framework exists for page interaction (will be rebuilt according to specs).
 
-**Injected Script** (`injected.js`): Performs DOM manipulation and data extraction. Runs in the page context for direct DOM access.
-
-**Popup/Options Scripts**: Handle UI interactions and user configuration. Communicate with background script for data operations.
-
-**Why This Pattern**: This separation provides security (content scripts can't access page variables), performance (scripts load only when needed), and maintainability (clear boundaries between concerns).
+**Options/Popup Scripts**: Handle UI interactions and communicate with background script for AI operations.
 
 ### Service Layer Pattern
-The AI Manager demonstrates a service layer pattern where complex functionality is abstracted behind a simple interface:
+The AI Manager demonstrates the target service layer pattern:
 
 ```javascript
 // Simple interface for complex functionality
@@ -111,4 +75,4 @@ const aiManager = new AIManager();
 const response = await aiManager.callAI(messages, options);
 ```
 
-**Why This Pattern**: Services hide implementation details, making the rest of the extension simpler and more testable. The AI Manager could be completely rewritten without changing how other components use it.
+This pattern will be replicated for all other major components (Repository Manager, Scraper, Navigator, etc.).
