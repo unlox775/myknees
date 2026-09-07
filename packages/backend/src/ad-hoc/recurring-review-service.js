@@ -9,10 +9,15 @@ const { DEFAULT_FORMAT_FILTER } = require('./month-bucket-service');
 
 const DEFAULT_WINDOW_MONTHS = 24;
 const DEFAULT_ACCOUNT_IDENTIFIERS = ['Ally_Bank', 'Capital_One', 'Chase_VISA'];
+const AMOUNT_TOLERANCE_RATIO = 0.15;
+const DATE_TOLERANCE_RATIO = 0.15;
+const MIN_STRICT_OCCURRENCES = 3;
 
 const DETECTION_CRITERIA = {
   canonical_window_rule: 'last_24_months_ending_latest_transaction_date_for_selected_accounts',
-  cadence_labels: ['monthly', 'every-other-month', 'annual', 'low-confidence'],
+  cadence_labels: ['weekly', 'bi-weekly', 'monthly', 'every-other-month', 'annual', 'low-confidence'],
+  strict_series_rule:
+    'candidate needs at least three occurrences with date gaps matching a supported cadence within ±15%; amount stability within ±15% is preferred but date regularity can carry variable bills',
   monthly: {
     min_active_months: 3,
     dominant_spacing_months: [1],
@@ -115,6 +120,15 @@ function round2(value) {
 
 function compareDates(left, right) {
   return String(left).localeCompare(String(right));
+}
+
+function dateToUtcMs(dateValue) {
+  return new Date(`${safeText(dateValue)}T12:00:00.000Z`).getTime();
+}
+
+function dayDiff(fromDate, toDate) {
+  const diffMs = dateToUtcMs(toDate) - dateToUtcMs(fromDate);
+  return Math.round(diffMs / (86400 * 1000));
 }
 
 function compareMonthKeys(left, right) {
@@ -246,6 +260,106 @@ function confidenceLabel(score) {
   if (score >= 0.76) return 'high';
   if (score >= 0.52) return 'medium';
   return 'low';
+}
+
+function cadenceToleranceDays(expectedDays) {
+  return Math.max(2, Math.round(Math.abs(expectedDays) * DATE_TOLERANCE_RATIO));
+}
+
+function supportedCadences() {
+  return [
+    { label: 'weekly', interval_days: 7, cadence_interval_months: null },
+    { label: 'bi-weekly', interval_days: 14, cadence_interval_months: null },
+    { label: 'monthly', interval_days: 30.4375, cadence_interval_months: 1 },
+    { label: 'every-other-month', interval_days: 60.875, cadence_interval_months: 2 },
+    { label: 'annual', interval_days: 365.25, cadence_interval_months: 12 },
+  ];
+}
+
+function analyzeStrictSeries(transactions) {
+  const sorted = [...transactions].sort((left, right) => {
+    const dateCompare = compareDates(left.date, right.date);
+    if (dateCompare !== 0) return dateCompare;
+    return left.transaction_id - right.transaction_id;
+  });
+
+  if (sorted.length < MIN_STRICT_OCCURRENCES) {
+    return {
+      is_strict_series: false,
+      best_cadence: null,
+      strict_series_score: 0,
+      confidence_parts: {
+        occurrence_score: round2(sorted.length / MIN_STRICT_OCCURRENCES),
+        cadence_score: 0,
+        amount_score: 0,
+      },
+      reason: `Only ${sorted.length} occurrence(s); needs at least ${MIN_STRICT_OCCURRENCES}.`,
+    };
+  }
+
+  const gaps = [];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const gap = dayDiff(sorted[i - 1].date, sorted[i].date);
+    if (Number.isFinite(gap) && gap > 0) gaps.push(gap);
+  }
+
+  let best = null;
+  for (const cadence of supportedCadences()) {
+    const tolerance = cadenceToleranceDays(cadence.interval_days);
+    const matched = gaps.filter((gap) => Math.abs(gap - cadence.interval_days) <= tolerance).length;
+    const score = gaps.length ? matched / gaps.length : 0;
+    const avgDeviationRatio = gaps.length
+      ? gaps.reduce((sum, gap) => sum + Math.abs(gap - cadence.interval_days) / cadence.interval_days, 0) / gaps.length
+      : 1;
+    const row = {
+      ...cadence,
+      matched_gap_count: matched,
+      total_gap_count: gaps.length,
+      tolerance_days: tolerance,
+      cadence_match_score: score,
+      avg_deviation_ratio: avgDeviationRatio,
+    };
+    if (
+      !best ||
+      row.cadence_match_score > best.cadence_match_score ||
+      (row.cadence_match_score === best.cadence_match_score &&
+        row.avg_deviation_ratio < best.avg_deviation_ratio)
+    ) {
+      best = row;
+    }
+  }
+
+  const amounts = sorted
+    .map((tx) => Math.abs(Number(tx.amount_abs) || Number(tx.amount) || 0))
+    .filter((value) => value > 0);
+  const medianAmount = median(amounts);
+  const amountMatches = medianAmount > 0
+    ? amounts.filter((amount) => Math.abs(amount - medianAmount) / medianAmount <= AMOUNT_TOLERANCE_RATIO).length
+    : 0;
+  const amountScore = amounts.length ? amountMatches / amounts.length : 0;
+  const occurrenceScore = clamp(sorted.length / 8, 0, 1);
+  const cadenceScore = best ? best.cadence_match_score : 0;
+  const strictSeriesScore = clamp(cadenceScore * 0.58 + amountScore * 0.27 + occurrenceScore * 0.15, 0, 1);
+
+  return {
+    is_strict_series: Boolean(best && sorted.length >= MIN_STRICT_OCCURRENCES && cadenceScore >= 0.67),
+    best_cadence: best,
+    cadence_match_score: round2(cadenceScore),
+    amount_match_score: round2(amountScore),
+    strict_series_score: round2(strictSeriesScore),
+    confidence_parts: {
+      occurrence_score: round2(occurrenceScore),
+      cadence_score: round2(cadenceScore),
+      amount_score: round2(amountScore),
+      formula: '0.58*cadence + 0.27*amount + 0.15*occurrence_count',
+    },
+    gaps_days: gaps,
+    amount_tolerance_ratio: AMOUNT_TOLERANCE_RATIO,
+    date_tolerance_ratio: DATE_TOLERANCE_RATIO,
+    reason: best
+      ? `${sorted.length} occurrences; ${best.label} cadence matched ${best.matched_gap_count}/${best.total_gap_count} gaps; amount matched ${amountMatches}/${amounts.length} within ±15%.`
+      : 'No supported cadence matched.',
+  };
 }
 
 function parseAccountSelection(searchParams) {
@@ -668,13 +782,17 @@ function computeSpacingMetrics(activeMonthKeys) {
 }
 
 function buildEvidencePoints(metrics) {
-  return [
+  const points = [
     `${metrics.transaction_count} transactions across ${metrics.active_month_count} active month(s)`,
     `dominant spacing ${metrics.dominant_spacing_months || 'n/a'} month(s), regularity ${round2(
       metrics.spacing_regularity
     ).toFixed(2)}`,
     `amount CV ${round2(metrics.amount_cv).toFixed(2)} (lower is more stable)`,
   ];
+  if (metrics.strict_series_analysis) {
+    points.push(metrics.strict_series_analysis.reason);
+  }
+  return points;
 }
 
 function normalizeDisplayName(rawDescription, normalizedDescription) {
@@ -760,8 +878,12 @@ function sortCandidates(candidates, sortKey) {
 }
 
 function filterCandidates(candidates, labelFilter) {
-  if (!labelFilter) return [...candidates];
-  return candidates.filter((candidate) => candidate.label_set.includes(labelFilter));
+  const visible = candidates.filter((candidate) => candidate.review_status !== 'merged');
+  if (!labelFilter) return visible;
+  if (labelFilter === 'not-valid') {
+    return visible.filter((candidate) => candidate.review_status === 'not_valid');
+  }
+  return visible.filter((candidate) => candidate.label_set.includes(labelFilter));
 }
 
 async function buildRecurringReviewModel(knex, searchParams) {
@@ -870,10 +992,16 @@ async function buildRecurringReviewModel(knex, searchParams) {
 
   const candidates = [];
   const detailsById = new Map();
+  const hasReviewTable = await knex.schema.hasTable('recurring_candidate_reviews');
+  const reviewRows = hasReviewTable ? await knex('recurring_candidate_reviews').select('*') : [];
+  const reviewByKey = new Map(reviewRows.map((row) => [row.candidate_key, row]));
 
   for (const group of groups.values()) {
     const activeMonthKeys = [...group.monthly_totals.keys()].sort((a, b) => a.localeCompare(b));
     if (activeMonthKeys.length < 2 || group.transactions.length < 2) continue;
+
+    const strictSeries = analyzeStrictSeries(group.transactions);
+    if (!strictSeries.is_strict_series) continue;
 
     const spacing = computeSpacingMetrics(activeMonthKeys);
     const monthlyTotals = activeMonthKeys.map((monthKey) => group.monthly_totals.get(monthKey).total_amount);
@@ -890,9 +1018,19 @@ async function buildRecurringReviewModel(knex, searchParams) {
       spacing_regularity: spacing.spacing_regularity,
       avg_transactions_per_active_month: group.transactions.length / activeMonthKeys.length,
       amount_cv: amountCv,
+      strict_series_analysis: strictSeries,
     };
 
-    const cadence = detectCadence(metrics);
+    const fallbackCadence = detectCadence(metrics);
+    const cadence = strictSeries.best_cadence
+      ? {
+          label: strictSeries.best_cadence.label,
+          cadence_interval_months:
+            strictSeries.best_cadence.cadence_interval_months ||
+            (fallbackCadence ? fallbackCadence.cadence_interval_months : 1),
+          cadence_interval_days: strictSeries.best_cadence.interval_days,
+        }
+      : fallbackCadence;
     if (!cadence) continue;
 
     const topRawDescription = mostFrequentKey(group.raw_descriptions);
@@ -901,6 +1039,7 @@ async function buildRecurringReviewModel(knex, searchParams) {
     const classInfo = classifyEssentiality(topCategory, topNormalizedVariant, topRawDescription);
 
     let confidenceScore = calculateConfidence(metrics, window.month_count, cadence.label);
+    confidenceScore = round2((confidenceScore * 0.45) + ((strictSeries.strict_series_score || 0) * 0.55));
     if (
       cadence.label === 'annual' &&
       classInfo.essentiality !== 'essential' &&
@@ -914,10 +1053,14 @@ async function buildRecurringReviewModel(knex, searchParams) {
     };
 
     const cadenceInterval = Math.max(1, Number(cadence.cadence_interval_months) || 1);
-    const annualEquivalent = round2(amountMedian * (12 / cadenceInterval));
+    const chargeMedian = round2(median(group.amounts_abs));
+    const annualEquivalent = cadence.cadence_interval_days
+      ? round2(chargeMedian * (365.25 / cadence.cadence_interval_days))
+      : round2(amountMedian * (12 / cadenceInterval));
     const monthlyEquivalent = round2(annualEquivalent / 12);
 
     const id = candidateId(group.normalized_description, group.account_identifiers);
+    const review = reviewByKey.get(id) || null;
     const displayName = normalizeDisplayName(topRawDescription, group.normalized_description);
 
     const history = window.month_keys.map((monthKey) => {
@@ -960,6 +1103,11 @@ async function buildRecurringReviewModel(knex, searchParams) {
         dominant_spacing_months: metrics.dominant_spacing_months,
       },
       confidence,
+      confidence_parts: strictSeries.confidence_parts,
+      strict_series_analysis: strictSeries,
+      review_status: review && review.status ? review.status : 'active',
+      merged_into_candidate_key: review && review.merged_into_candidate_key ? review.merged_into_candidate_key : null,
+      review_note: review && review.review_note ? review.review_note : '',
       essentiality: classInfo.essentiality,
       candidate_type: classInfo.candidate_type,
       is_subscription_like: Boolean(classInfo.is_subscription_like),
@@ -968,7 +1116,7 @@ async function buildRecurringReviewModel(knex, searchParams) {
       first_seen_date: group.first_seen_date,
       last_seen_date: group.last_seen_date,
       amount: {
-        median_charge: round2(median(group.amounts_abs)),
+        median_charge: chargeMedian,
         average_charge: round2(
           group.amounts_abs.length
             ? group.amounts_abs.reduce((sum, value) => sum + value, 0) / group.amounts_abs.length
@@ -1104,8 +1252,100 @@ async function getRecurringCandidateTransactions(knex, searchParams, candidateId
   };
 }
 
+async function listRecurringSeriesTransactionSpans(knex, searchParams) {
+  const model = await buildRecurringReviewModel(knex, searchParams);
+  const spans = {};
+  const series = [];
+
+  for (const candidate of model.candidates) {
+    if (candidate.review_status !== 'active') continue;
+    const transactions = [...(model.details_by_id.get(candidate.candidate_id) || [])].sort((left, right) => {
+      if (compareDates(left.date, right.date) !== 0) {
+        return compareDates(left.date, right.date);
+      }
+      return left.transaction_id - right.transaction_id;
+    });
+    if (transactions.length < 2) continue;
+
+    series.push({
+      candidate_id: candidate.candidate_id,
+      display_name: candidate.display_name,
+      cadence: candidate.cadence,
+      transaction_count: transactions.length,
+    });
+
+    for (let i = 0; i < transactions.length - 1; i += 1) {
+      const current = transactions[i];
+      const next = transactions[i + 1];
+      const spanDays = Math.max(1, Math.round((new Date(`${next.date}T12:00:00.000Z`) - new Date(`${current.date}T12:00:00.000Z`)) / 86400000));
+      spans[current.transaction_id] = {
+        candidate_id: candidate.candidate_id,
+        display_name: candidate.display_name,
+        next_transaction_id: next.transaction_id,
+        next_date: next.date,
+        spread_days: spanDays,
+        shape: 'brick',
+      };
+    }
+  }
+
+  return {
+    account_identifiers: model.account_identifiers,
+    account_selection: model.account_selection,
+    canonical_window: model.canonical_window,
+    series,
+    spans_by_transaction_id: spans,
+  };
+}
+
+async function updateRecurringCandidateReview(knex, candidateId, payload = {}) {
+  const hasReviewTable = await knex.schema.hasTable('recurring_candidate_reviews');
+  if (!hasReviewTable) {
+    throw new Error('recurring_candidate_reviews table is missing; run migrations first.');
+  }
+
+  const status = safeText(payload.status || 'active').trim();
+  const allowedStatuses = new Set(['active', 'not_valid', 'merged']);
+  if (!allowedStatuses.has(status)) {
+    throw new Error('status must be active, not_valid, or merged.');
+  }
+
+  const mergedInto = status === 'merged' && payload.merged_into_candidate_key
+    ? safeText(payload.merged_into_candidate_key).trim()
+    : null;
+  if (status === 'merged' && !mergedInto) {
+    throw new Error('merged_into_candidate_key is required when status=merged.');
+  }
+  if (mergedInto === candidateId) {
+    throw new Error('A recurring candidate cannot be merged into itself.');
+  }
+
+  const ts = Date.now() / 1000;
+  const existing = await knex('recurring_candidate_reviews').where({ candidate_key: candidateId }).first();
+  const row = {
+    candidate_key: candidateId,
+    status,
+    merged_into_candidate_key: mergedInto,
+    review_note: payload.review_note ? safeText(payload.review_note).trim() : null,
+    updated_at: ts,
+  };
+
+  if (existing) {
+    await knex('recurring_candidate_reviews').where({ id: existing.id }).update(row);
+  } else {
+    await knex('recurring_candidate_reviews').insert({
+      ...row,
+      created_at: ts,
+    });
+  }
+
+  return knex('recurring_candidate_reviews').where({ candidate_key: candidateId }).first();
+}
+
 module.exports = {
   DETECTION_CRITERIA,
   listRecurringCandidates,
   getRecurringCandidateTransactions,
+  listRecurringSeriesTransactionSpans,
+  updateRecurringCandidateReview,
 };

@@ -60,6 +60,7 @@ class AllyBankParser extends BaseParser {
     const bucketed = this.capitalOnePayeeBucket(scrubbed);
     const lowered = this.lc(bucketed);
     if (/^audible(?:com|[a-z0-9]*(?:\s+[a-z0-9]+)*)?$/i.test(lowered)) return 'audible';
+    if (lowered === 'pullman de owner rent') return 'coug housing rent';
     return lowered;
   }
 }

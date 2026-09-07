@@ -35,6 +35,12 @@ const NAV_ITEMS = [
     label: 'Recurring Review',
     disabled: false,
   },
+  {
+    key: 'spread-graph',
+    href: '/ad-hoc/spread-graph',
+    label: 'Spread Graph',
+    disabled: false,
+  },
 ];
 
 function escapeHtml(value) {

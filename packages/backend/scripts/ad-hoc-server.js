@@ -20,6 +20,7 @@ const { fetchAllTransactionsMonthData } = require('../src/ad-hoc/all-transaction
 const { renderProjectionPage } = require('../src/ad-hoc/projection-page');
 const { renderProjectionScenarioPage } = require('../src/ad-hoc/projection-scenario-page');
 const { renderRecurringReviewPage } = require('../src/ad-hoc/recurring-review-page');
+const { renderSpreadGraphPage } = require('../src/ad-hoc/spread-graph-page');
 const { renderTransactionsPage } = require('../src/ad-hoc/transactions-page');
 const {
   listProjectionProfiles,
@@ -34,12 +35,14 @@ const {
 const {
   listRecurringCandidates,
   getRecurringCandidateTransactions,
+  updateRecurringCandidateReview,
 } = require('../src/ad-hoc/recurring-review-service');
 const {
   listCategoryOptions,
   updateTransactionCategoryOverride,
   updateTransactionNotes,
 } = require('../src/ad-hoc/transaction-category-service');
+const { fetchSpreadGraphData } = require('../src/ad-hoc/spread-graph-service');
 
 const HOST = process.env.AD_HOC_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.AD_HOC_PORT || '8791', 10);
@@ -56,6 +59,7 @@ const API_PROJECTION_CREDIT_BALANCE_PATH = '/api/ad-hoc/projections/credit-balan
 const API_PROJECTION_CANDIDATES_PATH = '/api/ad-hoc/projections/inferred-candidates';
 const API_PROJECTION_CANDIDATE_REFRESH_PATH = '/api/ad-hoc/projections/inferred-candidates/refresh';
 const API_RECURRING_CANDIDATES_PATH = '/api/ad-hoc/recurring-review/candidates';
+const API_SPREAD_GRAPH_PATH = '/api/ad-hoc/spread-graph';
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -599,6 +603,40 @@ async function handleRecurringCandidateTransactionsRequest(res, url, encodedCand
   }
 }
 
+async function handleRecurringCandidateReviewRequest(req, res, encodedCandidateId) {
+  let candidateId;
+  try {
+    candidateId = decodeURIComponent(encodedCandidateId);
+  } catch (_err) {
+    sendJson(res, 400, { ok: false, error: 'Candidate path is not valid URL encoding.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+    return;
+  }
+
+  try {
+    const review = await updateRecurringCandidateReview(getKnex(), candidateId, payload);
+    sendJson(res, 200, { ok: true, review });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleSpreadGraphRequest(res, url) {
+  try {
+    const payload = await fetchSpreadGraphData(getKnex(), url.searchParams);
+    sendJson(res, 200, { ok: true, ...payload });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
 async function requestHandler(req, res) {
   const method = req.method || 'GET';
   const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
@@ -640,6 +678,14 @@ async function requestHandler(req, res) {
     );
     if (transactionNotesMatch) {
       await handleTransactionNotesRequest(req, res, transactionNotesMatch[1]);
+      return;
+    }
+
+    const recurringReviewMatch = pathname.match(
+      /^\/api\/ad-hoc\/recurring-review\/candidates\/([^/]+)\/review$/
+    );
+    if (recurringReviewMatch) {
+      await handleRecurringCandidateReviewRequest(req, res, recurringReviewMatch[1]);
       return;
     }
 
@@ -691,6 +737,11 @@ async function requestHandler(req, res) {
 
   if (pathname === '/ad-hoc/recurring-review' || pathname === '/ad-hoc/recurring-review.html') {
     sendHtml(res, renderRecurringReviewPage());
+    return;
+  }
+
+  if (pathname === '/ad-hoc/spread-graph' || pathname === '/ad-hoc/spread-graph.html') {
+    sendHtml(res, renderSpreadGraphPage());
     return;
   }
 
@@ -754,6 +805,11 @@ async function requestHandler(req, res) {
     return;
   }
 
+  if (pathname === API_SPREAD_GRAPH_PATH) {
+    await handleSpreadGraphRequest(res, url);
+    return;
+  }
+
   const detailMatch = pathname.match(/^\/api\/ad-hoc\/month-buckets\/([^/]+)\/transactions$/);
   if (detailMatch) {
     await handleDetailRequest(res, url, detailMatch[1]);
@@ -793,6 +849,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-forecast`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/projection-scenario`);
   console.log(`Open: http://${HOST}:${PORT}/ad-hoc/recurring-review`);
+  console.log(`Open: http://${HOST}:${PORT}/ad-hoc/spread-graph`);
 });
 
 async function shutdown(signal) {

@@ -37,6 +37,7 @@ function renderRecurringReviewPage() {
           <option value="annual">Annual</option>
           <option value="every-other-month">Every-other-month</option>
           <option value="low-confidence">Low confidence</option>
+          <option value="not-valid">Marked not valid</option>
         </select>
       </label>
       <button id="recurring-load-button" type="button">Load Recurring Review</button>
@@ -71,7 +72,7 @@ function renderRecurringReviewPage() {
             <th scope="col" class="numeric">Annual Eq</th>
             <th scope="col">24-Month History</th>
             <th scope="col">Detail</th>
-            <th scope="col">Subscription?</th>
+            <th scope="col">Review</th>
           </tr>
         </thead>
         <tbody id="recurring-candidates-body"></tbody>

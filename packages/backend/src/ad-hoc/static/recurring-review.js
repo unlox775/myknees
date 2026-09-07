@@ -150,7 +150,9 @@
   }
 
   function candidateIsExcluded(candidateId) {
-    return state.excludedById.get(candidateId) === true;
+    const candidate = state.candidateById.get(candidateId);
+    return state.excludedById.get(candidateId) === true ||
+      (candidate && candidate.review_status === 'not_valid');
   }
 
   function updateSavingsGrid() {
@@ -311,13 +313,17 @@
     const sub = document.createElement('div');
     sub.className = 'recurring-subtext';
     sub.textContent = `${candidate.occurrence_count} tx across ${candidate.months_observed} active months`;
+    if (candidate.strict_series_analysis && candidate.strict_series_analysis.reason) {
+      sub.title = candidate.strict_series_analysis.reason;
+    }
     nameCell.appendChild(name);
     nameCell.appendChild(sub);
 
     const labelsCell = buildLabelCell(candidate);
 
     const cadenceCell = document.createElement('td');
-    cadenceCell.innerHTML = `<div>${candidate.cadence.label} (${candidate.cadence.cadence_interval_months}m)</div><div class="recurring-subtext">${candidate.confidence.label} confidence (${Number(candidate.confidence.score).toFixed(2)})</div>`;
+    const parts = candidate.confidence_parts || {};
+    cadenceCell.innerHTML = `<div>${candidate.cadence.label} (${candidate.cadence.cadence_interval_months}m)</div><div class="recurring-subtext">${candidate.confidence.label} confidence (${Number(candidate.confidence.score).toFixed(2)})</div><div class="recurring-subtext">cadence ${Number(parts.cadence_score || 0).toFixed(2)} / amount ${Number(parts.amount_score || 0).toFixed(2)} / count ${Number(parts.occurrence_score || 0).toFixed(2)}</div>`;
 
     const lastSeenCell = document.createElement('td');
     lastSeenCell.textContent = candidate.last_seen_date;
@@ -346,14 +352,29 @@
     excludeButton.type = 'button';
     excludeButton.className = 'not-subscription-toggle-button';
     excludeButton.dataset.candidateId = candidate.candidate_id;
-    excludeButton.textContent = candidateIsExcluded(candidate.candidate_id)
-      ? 'Restore as subscription'
-      : 'Not a subscription';
-    excludeButton.setAttribute(
-      'aria-pressed',
-      candidateIsExcluded(candidate.candidate_id) ? 'true' : 'false'
-    );
+    excludeButton.textContent = candidate.review_status === 'not_valid'
+      ? 'Restore valid'
+      : 'Not valid';
+    excludeButton.setAttribute('aria-pressed', candidate.review_status === 'not_valid' ? 'true' : 'false');
     excludeCell.appendChild(excludeButton);
+
+    const mergeSelect = document.createElement('select');
+    mergeSelect.className = 'recurring-merge-select';
+    mergeSelect.dataset.candidateId = candidate.candidate_id;
+    mergeSelect.setAttribute('aria-label', 'Merge with recurring candidate');
+    const mergePlaceholder = document.createElement('option');
+    mergePlaceholder.value = '';
+    mergePlaceholder.textContent = 'Merge with...';
+    mergeSelect.appendChild(mergePlaceholder);
+    for (const other of state.candidates) {
+      if (other.candidate_id === candidate.candidate_id) continue;
+      if (other.review_status === 'merged') continue;
+      const option = document.createElement('option');
+      option.value = other.candidate_id;
+      option.textContent = other.display_name;
+      mergeSelect.appendChild(option);
+    }
+    excludeCell.appendChild(mergeSelect);
 
     row.appendChild(keepCell);
     row.appendChild(nameCell);
@@ -397,9 +418,27 @@
     const excludeButton = row.querySelector('.not-subscription-toggle-button');
     if (excludeButton instanceof HTMLButtonElement) {
       const excluded = candidateIsExcluded(candidateId);
-      excludeButton.textContent = excluded ? 'Restore as subscription' : 'Not a subscription';
+      excludeButton.textContent = excluded ? 'Restore valid' : 'Not valid';
       excludeButton.setAttribute('aria-pressed', excluded ? 'true' : 'false');
     }
+  }
+
+  async function saveCandidateReview(candidateId, patch) {
+    const response = await fetchJson(
+      `/api/ad-hoc/recurring-review/candidates/${encodeURIComponent(candidateId)}/review`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }
+    );
+
+    const candidate = state.candidateById.get(candidateId);
+    if (candidate && response.review) {
+      candidate.review_status = response.review.status || patch.status || 'active';
+      candidate.merged_into_candidate_key = response.review.merged_into_candidate_key || null;
+    }
+    return response;
   }
 
   function renderDetailTable(payload, containerEl) {
@@ -598,6 +637,19 @@
 
   candidatesBody.addEventListener('change', (event) => {
     const target = event.target;
+    if (target instanceof HTMLSelectElement && target.classList.contains('recurring-merge-select')) {
+      const candidateId = target.dataset.candidateId;
+      const targetId = target.value;
+      if (!candidateId || !targetId) return;
+      saveCandidateReview(candidateId, {
+        status: 'merged',
+        merged_into_candidate_key: targetId,
+      })
+        .then(() => loadRecurringReview())
+        .catch((err) => setStatus(err.message, 'status-error'));
+      return;
+    }
+
     if (!(target instanceof HTMLInputElement)) return;
     if (!target.classList.contains('recurring-keep-toggle')) return;
 
@@ -618,8 +670,15 @@
       const candidateId = excludeButton.dataset.candidateId;
       if (!candidateId) return;
 
-      const nextExcluded = !candidateIsExcluded(candidateId);
-      state.excludedById.set(candidateId, nextExcluded);
+      const candidate = state.candidateById.get(candidateId);
+      const nextStatus = candidate && candidate.review_status === 'not_valid' ? 'active' : 'not_valid';
+      try {
+        await saveCandidateReview(candidateId, { status: nextStatus });
+      } catch (err) {
+        setStatus(err.message, 'status-error');
+        return;
+      }
+      state.excludedById.set(candidateId, nextStatus === 'not_valid');
       writeSavedState();
       refreshCandidateRow(candidateId);
       updateTableSummary();
